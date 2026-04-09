@@ -469,6 +469,8 @@ export default function App() {
   const timeWheelRef = useRef<FlatList<string> | null>(null);
   const dateSnapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timeSnapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDateOffsetRef = useRef(0);
+  const lastTimeOffsetRef = useRef(0);
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
@@ -966,6 +968,7 @@ export default function App() {
   };
 
   const handleDateWheelHapticScroll = (offsetY: number) => {
+    lastDateOffsetRef.current = offsetY;
     const index = getWheelIndex(offsetY, dateOptions.length);
     if (index === lastDateHapticIndexRef.current) {
       return;
@@ -984,6 +987,7 @@ export default function App() {
   };
 
   const handleTimeWheelHapticScroll = (offsetY: number) => {
+    lastTimeOffsetRef.current = offsetY;
     const index = getWheelIndex(offsetY, timeOptions.length);
     if (index === lastTimeHapticIndexRef.current) {
       return;
@@ -1014,11 +1018,11 @@ export default function App() {
     }
   };
 
-  const scheduleFinalizeDateWheel = (offsetY: number) => {
+  const scheduleFinalizeDateWheel = () => {
     if (dateSnapTimerRef.current) {
       clearTimeout(dateSnapTimerRef.current);
     }
-    dateSnapTimerRef.current = setTimeout(() => finalizeDateWheel(offsetY), 140);
+    dateSnapTimerRef.current = setTimeout(() => finalizeDateWheel(lastDateOffsetRef.current), 140);
   };
 
   const finalizeTimeWheel = (offsetY: number) => {
@@ -1034,11 +1038,11 @@ export default function App() {
     }
   };
 
-  const scheduleFinalizeTimeWheel = (offsetY: number) => {
+  const scheduleFinalizeTimeWheel = () => {
     if (timeSnapTimerRef.current) {
       clearTimeout(timeSnapTimerRef.current);
     }
-    timeSnapTimerRef.current = setTimeout(() => finalizeTimeWheel(offsetY), 140);
+    timeSnapTimerRef.current = setTimeout(() => finalizeTimeWheel(lastTimeOffsetRef.current), 140);
   };
 
   useEffect(() => {
@@ -1595,8 +1599,8 @@ export default function App() {
                   dateSnapTimerRef.current = null;
                 }
               }}
-              onMomentumScrollEnd={(event) => scheduleFinalizeDateWheel(event.nativeEvent.contentOffset.y)}
-              onScrollEndDrag={(event) => scheduleFinalizeDateWheel(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={() => scheduleFinalizeDateWheel()}
+              onScrollEndDrag={() => scheduleFinalizeDateWheel()}
               onScrollToIndexFailed={(info) => {
                 dateWheelRef.current?.scrollToOffset({
                   offset: info.index * WHEEL_ITEM_HEIGHT,
@@ -1648,8 +1652,8 @@ export default function App() {
                   timeSnapTimerRef.current = null;
                 }
               }}
-              onMomentumScrollEnd={(event) => scheduleFinalizeTimeWheel(event.nativeEvent.contentOffset.y)}
-              onScrollEndDrag={(event) => scheduleFinalizeTimeWheel(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={() => scheduleFinalizeTimeWheel()}
+              onScrollEndDrag={() => scheduleFinalizeTimeWheel()}
               onScrollToIndexFailed={(info) => {
                 timeWheelRef.current?.scrollToOffset({
                   offset: info.index * WHEEL_ITEM_HEIGHT,
