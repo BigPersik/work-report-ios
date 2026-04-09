@@ -1018,7 +1018,7 @@ export default function App() {
     if (dateSnapTimerRef.current) {
       clearTimeout(dateSnapTimerRef.current);
     }
-    dateSnapTimerRef.current = setTimeout(() => finalizeDateWheel(offsetY), 40);
+    dateSnapTimerRef.current = setTimeout(() => finalizeDateWheel(offsetY), 140);
   };
 
   const finalizeTimeWheel = (offsetY: number) => {
@@ -1038,7 +1038,7 @@ export default function App() {
     if (timeSnapTimerRef.current) {
       clearTimeout(timeSnapTimerRef.current);
     }
-    timeSnapTimerRef.current = setTimeout(() => finalizeTimeWheel(offsetY), 40);
+    timeSnapTimerRef.current = setTimeout(() => finalizeTimeWheel(offsetY), 140);
   };
 
   useEffect(() => {
@@ -1589,6 +1589,12 @@ export default function App() {
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
               onScroll={(event) => handleDateWheelHapticScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollBegin={() => {
+                if (dateSnapTimerRef.current) {
+                  clearTimeout(dateSnapTimerRef.current);
+                  dateSnapTimerRef.current = null;
+                }
+              }}
               onMomentumScrollEnd={(event) => scheduleFinalizeDateWheel(event.nativeEvent.contentOffset.y)}
               onScrollEndDrag={(event) => scheduleFinalizeDateWheel(event.nativeEvent.contentOffset.y)}
               onScrollToIndexFailed={(info) => {
@@ -1636,6 +1642,12 @@ export default function App() {
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
               onScroll={(event) => handleTimeWheelHapticScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollBegin={() => {
+                if (timeSnapTimerRef.current) {
+                  clearTimeout(timeSnapTimerRef.current);
+                  timeSnapTimerRef.current = null;
+                }
+              }}
               onMomentumScrollEnd={(event) => scheduleFinalizeTimeWheel(event.nativeEvent.contentOffset.y)}
               onScrollEndDrag={(event) => scheduleFinalizeTimeWheel(event.nativeEvent.contentOffset.y)}
               onScrollToIndexFailed={(info) => {
