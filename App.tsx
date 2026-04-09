@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
@@ -362,6 +361,45 @@ const getTaskTrackedMs = (entry: TaskEntry, nowMs: number) => {
 };
 const WHEEL_ITEM_HEIGHT = 40;
 
+function TabGlyph({
+  type,
+  active,
+  color,
+}: {
+  type: 'calendar' | 'report' | 'settings';
+  active: boolean;
+  color: string;
+}) {
+  if (type === 'calendar') {
+    return (
+      <View style={[styles.glyphCalendar, { borderColor: color }]}>
+        <View style={[styles.glyphCalendarTop, { backgroundColor: color }]} />
+        <View style={styles.glyphCalendarDotsRow}>
+          <View style={[styles.glyphDot, { backgroundColor: color }]} />
+          <View style={[styles.glyphDot, { backgroundColor: color }]} />
+          <View style={[styles.glyphDot, { backgroundColor: color }]} />
+        </View>
+      </View>
+    );
+  }
+
+  if (type === 'report') {
+    return (
+      <View style={styles.glyphReportRow}>
+        <View style={[styles.glyphBar, { height: 8, backgroundColor: color, opacity: active ? 1 : 0.7 }]} />
+        <View style={[styles.glyphBar, { height: 12, backgroundColor: color, opacity: active ? 1 : 0.8 }]} />
+        <View style={[styles.glyphBar, { height: 16, backgroundColor: color }]} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.glyphGear, { borderColor: color }]}>
+      <View style={[styles.glyphGearCore, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
 export default function App() {
   const [entries, setEntries] = useState<TaskEntry[]>([]);
   const [form, setForm] = useState<NewTask>(INITIAL_FORM);
@@ -376,16 +414,16 @@ export default function App() {
   const isDark = themeMode === 'dark';
   const isColorful = themeMode === 'colorful';
   const c = {
-    appBg: isColorful ? '#eef8f6' : isDark ? '#0f172a' : '#eef3ff',
-    cardBg: isColorful ? '#ffffff' : isDark ? '#111b2f' : '#ffffff',
-    cardBorder: isColorful ? '#ccebe3' : isDark ? '#27344d' : '#e4e9f7',
-    textPrimary: isColorful ? '#0d3b36' : isDark ? '#e5ecff' : '#1b1b1f',
-    textSecondary: isColorful ? '#2f6b64' : isDark ? '#aab9da' : '#606781',
-    tabBg: isColorful ? '#ffffff' : isDark ? '#0f1a2d' : '#ffffff',
-    tabBorder: isColorful ? '#bfe7de' : isDark ? '#243249' : '#dbe3f7',
-    tabActiveBg: isColorful ? '#d8f4ee' : isDark ? '#1d335c' : '#eaf1ff',
-    tabIcon: isColorful ? '#3b7f73' : isDark ? '#9fb1d8' : '#6c7389',
-    tabIconActive: isColorful ? '#0ea5a5' : '#3b82f6',
+    appBg: isColorful ? '#0B1220' : isDark ? '#0f172a' : '#eef3ff',
+    cardBg: isColorful ? '#111827' : isDark ? '#111b2f' : '#ffffff',
+    cardBorder: isColorful ? '#1F2937' : isDark ? '#27344d' : '#e4e9f7',
+    textPrimary: isColorful ? '#E5E7EB' : isDark ? '#e5ecff' : '#1b1b1f',
+    textSecondary: isColorful ? '#9CA3AF' : isDark ? '#aab9da' : '#606781',
+    tabBg: isColorful ? '#111827' : isDark ? '#0f1a2d' : '#ffffff',
+    tabBorder: isColorful ? '#1F2937' : isDark ? '#243249' : '#dbe3f7',
+    tabActiveBg: isColorful ? '#1E1B4B' : isDark ? '#1d335c' : '#eaf1ff',
+    tabIcon: isColorful ? '#6366F1' : isDark ? '#9fb1d8' : '#6c7389',
+    tabIconActive: isColorful ? '#4F46E5' : '#3b82f6',
   };
   const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
   const lastDateIndexRef = useRef<number>(-1);
@@ -1300,28 +1338,16 @@ export default function App() {
   );
 
   const renderTabBar = () => {
-    const tabs: Array<{ key: Screen; label: string }> = [
-      { key: 'calendar', label: t.menuCalendar },
-      { key: 'report', label: t.menuReport },
-      { key: 'settings', label: t.menuSettings },
+    const tabs: Array<{ key: Screen; label: string; iconType: 'calendar' | 'report' | 'settings' }> = [
+      { key: 'calendar', label: t.menuCalendar, iconType: 'calendar' },
+      { key: 'report', label: t.menuReport, iconType: 'report' },
+      { key: 'settings', label: t.menuSettings, iconType: 'settings' },
     ];
     return (
       <View style={styles.tabBarWrap}>
         <View style={[styles.tabBar, { backgroundColor: c.tabBg, borderColor: c.tabBorder }]}>
           {tabs.map((tab) => {
             const active = screen === tab.key;
-            const iconName =
-              tab.key === 'calendar'
-                ? active
-                  ? 'calendar'
-                  : 'calendar-outline'
-                : tab.key === 'report'
-                  ? active
-                    ? 'bar-chart'
-                    : 'bar-chart-outline'
-                  : active
-                    ? 'settings'
-                    : 'settings-outline';
             return (
               <Pressable
                 key={tab.key}
@@ -1329,11 +1355,7 @@ export default function App() {
                 style={[styles.tabItem, active && styles.tabItemActive, active && { backgroundColor: c.tabActiveBg }]}
               >
                 <View style={[styles.tabIconWrap, active && styles.tabIconWrapActive]}>
-                  <Ionicons
-                    name={iconName}
-                    size={20}
-                    color={active ? c.tabIconActive : c.tabIcon}
-                  />
+                  <TabGlyph type={tab.iconType} active={active} color={active ? c.tabIconActive : c.tabIcon} />
                 </View>
                 <Text style={[styles.tabLabel, active && styles.tabLabelActive, { color: active ? c.tabIconActive : c.tabIcon }]}>
                   {tab.label}
@@ -1453,18 +1475,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#edf2f7',
   },
   statusRunning: {
-    backgroundColor: '#dcfce7',
+    backgroundColor: '#22C55E',
   },
   statusPaused: {
-    backgroundColor: '#fef3c7',
+    backgroundColor: '#F59E0B',
   },
   statusEnded: {
-    backgroundColor: '#fee2e2',
+    backgroundColor: '#EF4444',
   },
   statusBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#334155',
+    color: '#0B1220',
   },
   input: {
     borderWidth: 1,
@@ -1834,6 +1856,55 @@ const styles = StyleSheet.create({
   },
   tabIconWrapActive: {
     backgroundColor: '#dbe8ff',
+  },
+  glyphCalendar: {
+    width: 18,
+    height: 18,
+    borderWidth: 1.6,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  glyphCalendarTop: {
+    height: 4,
+    width: '100%',
+  },
+  glyphCalendarDotsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 2,
+  },
+  glyphDot: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 2,
+  },
+  glyphReportRow: {
+    width: 18,
+    height: 18,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 1,
+    paddingBottom: 1,
+  },
+  glyphBar: {
+    width: 4,
+    borderRadius: 2,
+  },
+  glyphGear: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glyphGearCore: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   tabLabel: {
     marginTop: 4,
