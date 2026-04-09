@@ -305,6 +305,7 @@ const translations: Record<
     autoBackupHint: string;
     taskRepeatBadgeDaily: string;
     taskRepeatBadgeWeekly: string;
+    topTaskShareSuffix: string;
   }
 > = {
   uk: {
@@ -472,6 +473,7 @@ const translations: Record<
     autoBackupHint: 'Копія dayflow-autobackup.json у папці застосунку; через «Поділитися» можна зберегти в iCloud у Файлах.',
     taskRepeatBadgeDaily: 'щодня',
     taskRepeatBadgeWeekly: 'щотижня',
+    topTaskShareSuffix: '% від чистого часу дня',
   },
   en: {
     title: 'DayFlow',
@@ -638,6 +640,7 @@ const translations: Record<
     autoBackupHint: 'Latest snapshot is also saved as dayflow-autobackup.json in the app folder; share to Files / iCloud if you like.',
     taskRepeatBadgeDaily: 'daily',
     taskRepeatBadgeWeekly: 'weekly',
+    topTaskShareSuffix: '% of net day time',
   },
   ro: {
     title: 'DayFlow',
@@ -804,6 +807,7 @@ const translations: Record<
     autoBackupHint: 'Copie dayflow-autobackup.json în folderul aplicației; partajare către Fișiere / iCloud.',
     taskRepeatBadgeDaily: 'zilnic',
     taskRepeatBadgeWeekly: 'săptămânal',
+    topTaskShareSuffix: '% din timpul net al zilei',
   },
 };
 
@@ -822,10 +826,12 @@ const getTaskTrackedMs = (entry: TaskEntry, nowMs: number) => {
   const live = entry.trackingStartedAt ? Math.max(0, nowMs - new Date(entry.trackingStartedAt).getTime()) : 0;
   return Math.max(0, entry.trackedMs + live);
 };
-const WHEEL_ITEM_HEIGHT = 40;
+const WHEEL_ITEM_HEIGHT = 32;
 const WHEEL_VISIBLE_ROWS = 5;
 const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ROWS;
 const WHEEL_CENTER_OFFSET = (WHEEL_CONTAINER_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
+/** iOS UIDatePicker spinner needs full width for hour + minute columns; min height avoids clipping. */
+const NATIVE_IOS_PICKER_HEIGHT = 216;
 const USE_NATIVE_IOS_PICKER = true;
 const CLICK_SOUND_URI =
   'data:audio/wav;base64,UklGRjwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YRgAAAAAABkAMgBKAGAAdABmAE8AOQAjAAwAAAAA8f/k/9f/yv/N/9f/6f8AAP//';
@@ -3267,31 +3273,33 @@ export default function App() {
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.addTask}</Text>
         <Text style={styles.menuSubtitle}>{t.selectDay}: {formatReadableDate(form.date)}</Text>
         {isNativeIosPicker ? (
-          <View style={styles.nativePickerRow}>
-            <View style={styles.nativePickerHalf}>
+          <View style={styles.nativePickerColumn}>
+            <View style={styles.nativePickerSlot}>
               <DateTimePicker
                 value={formDateObject}
                 mode="date"
                 display="spinner"
+                locale={language === 'uk' ? 'uk_UA' : language === 'ro' ? 'ro_RO' : 'en_US'}
                 onChange={handleNativeDateChange}
                 accentColor="#2563eb"
-                textColor="#1b1b1f"
+                textColor={isDark || isColorful ? '#e5ecff' : '#1b1b1f'}
                 themeVariant={isDark || isColorful ? 'dark' : 'light'}
-                style={styles.nativePicker}
+                style={styles.nativePickerIOS}
               />
             </View>
-            <View style={styles.nativePickerHalf}>
+            <View style={styles.nativePickerSlot}>
               <DateTimePicker
                 value={formTimeObject}
                 mode="time"
                 is24Hour
                 display="spinner"
                 minuteInterval={15}
+                locale={language === 'uk' ? 'uk_UA' : language === 'ro' ? 'ro_RO' : 'en_US'}
                 onChange={handleNativeTimeChange}
                 accentColor="#2563eb"
-                textColor="#1b1b1f"
+                textColor={isDark || isColorful ? '#e5ecff' : '#1b1b1f'}
                 themeVariant={isDark || isColorful ? 'dark' : 'light'}
-                style={styles.nativePicker}
+                style={styles.nativePickerIOS}
               />
             </View>
           </View>
@@ -3798,8 +3806,10 @@ export default function App() {
               <View key={`top-${item.id}`} style={styles.entryCard}>
                 <Text style={styles.entryTask}>{index + 1}. {localizedTask(item)}</Text>
                 <Text style={styles.entryNotes}>
-                  {t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))} (
-                  {dayStats.netMs > 0 ? Math.round((getTaskTrackedMs(item, nowTick) / dayStats.netMs) * 100) : 0}%)
+                  {t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}
+                  {' · '}
+                  {dayStats.netMs > 0 ? Math.round((getTaskTrackedMs(item, nowTick) / dayStats.netMs) * 100) : 0}
+                  {t.topTaskShareSuffix}
                 </Text>
               </View>
             ))
@@ -4111,10 +4121,7 @@ export default function App() {
                 <View style={[styles.tabIconWrap, active && styles.tabIconWrapActive]} accessible={false}>
                   <TabGlyph type={tab.iconType} active={active} color={active ? c.tabIconActive : c.tabIcon} />
                 </View>
-                <Text
-                  style={[styles.tabLabel, active && styles.tabLabelActive, { color: active ? c.tabIconActive : c.tabIcon }]}
-                  maxFontSizeMultiplier={1.4}
-                >
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive, { color: active ? c.tabIconActive : c.tabIcon }]}>
                   {tab.label}
                 </Text>
               </Pressable>
@@ -4418,24 +4425,25 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  nativePickerRow: {
-    flexDirection: 'row',
-    gap: 8,
+  nativePickerColumn: {
+    flexDirection: 'column',
+    gap: 10,
     marginBottom: 8,
   },
-  nativePickerHalf: {
-    flex: 1,
+  nativePickerSlot: {
+    width: '100%',
+    minHeight: NATIVE_IOS_PICKER_HEIGHT,
     borderWidth: 1,
     borderColor: '#dbe3f5',
     borderRadius: 10,
     backgroundColor: '#f9fbff',
-    overflow: 'hidden',
-    height: WHEEL_CONTAINER_HEIGHT,
+    overflow: 'visible',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  nativePicker: {
-    height: WHEEL_CONTAINER_HEIGHT,
+  nativePickerIOS: {
     width: '100%',
+    height: NATIVE_IOS_PICKER_HEIGHT,
   },
   halfWheel: {
     flex: 1,
