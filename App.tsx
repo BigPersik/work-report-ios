@@ -2003,7 +2003,9 @@ export default function App() {
         <FlatList
           data={tasksForDay}
           keyExtractor={(item) => item.id}
-          scrollEnabled={false}
+          scrollEnabled
+          nestedScrollEnabled
+          style={styles.dayTasksList}
           ListEmptyComponent={<Text style={styles.emptyText}>{t.noTasksForDay}</Text>}
           renderItem={({ item }) => (
             <View style={styles.entryCard}>
@@ -2569,6 +2571,9 @@ const styles = StyleSheet.create({
   },
   generalList: {
     marginTop: 10,
+  },
+  dayTasksList: {
+    maxHeight: 360,
   },
   actionsRow: {
     flexDirection: 'row',
