@@ -17,6 +17,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -128,6 +129,10 @@ const translations: Record<
     taskPresetPlaceholder: string;
     addPreset: string;
     noPresets: string;
+    editDoneComment: string;
+    commentTitle: string;
+    commentSave: string;
+    commentCancel: string;
     on: string;
     off: string;
     themeLight: string;
@@ -224,6 +229,10 @@ const translations: Record<
     taskPresetPlaceholder: 'Новий пресет задачі',
     addPreset: 'Додати пресет',
     noPresets: 'Ще немає пресетів.',
+    editDoneComment: 'Коментар',
+    commentTitle: 'Коментар до завершеної задачі',
+    commentSave: 'Зберегти',
+    commentCancel: 'Скасувати',
     on: 'Увімк.',
     off: 'Вимк.',
     themeLight: 'Світла',
@@ -319,6 +328,10 @@ const translations: Record<
     taskPresetPlaceholder: 'New task preset',
     addPreset: 'Add preset',
     noPresets: 'No presets yet.',
+    editDoneComment: 'Comment',
+    commentTitle: 'Comment for completed task',
+    commentSave: 'Save',
+    commentCancel: 'Cancel',
     on: 'On',
     off: 'Off',
     themeLight: 'Light',
@@ -414,6 +427,10 @@ const translations: Record<
     taskPresetPlaceholder: 'Preset nou task',
     addPreset: 'Adauga preset',
     noPresets: 'Nu exista preseturi.',
+    editDoneComment: 'Comentariu',
+    commentTitle: 'Comentariu pentru task finalizat',
+    commentSave: 'Salveaza',
+    commentCancel: 'Anuleaza',
     on: 'Pornit',
     off: 'Oprit',
     themeLight: 'Luminoasă',
@@ -559,6 +576,8 @@ export default function App() {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [taskTemplates, setTaskTemplates] = useState<Record<Language, string[]>>(DEFAULT_TASK_TEMPLATES);
   const [presetDraft, setPresetDraft] = useState('');
+  const [commentTaskId, setCommentTaskId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
@@ -1374,6 +1393,28 @@ export default function App() {
       ...prev,
       [language]: prev[language].filter((item) => item !== preset),
     }));
+  };
+
+  const openCompletedCommentEditor = (taskId: string) => {
+    const target = entries.find((item) => item.id === taskId);
+    if (!target?.completed) {
+      return;
+    }
+    setCommentTaskId(taskId);
+    setCommentDraft(target.notes ?? '');
+  };
+
+  const saveCompletedTaskComment = () => {
+    if (!commentTaskId) {
+      return;
+    }
+    setEntries((prev) =>
+      prev.map((item) =>
+        item.id === commentTaskId && item.completed ? { ...item, notes: commentDraft.trim() } : item,
+      ),
+    );
+    setCommentTaskId(null);
+    setCommentDraft('');
   };
 
   useEffect(() => {
@@ -2457,6 +2498,11 @@ export default function App() {
                 <Pressable onPress={withInteractionFeedback(() => toggleDone(item.id))}>
                   <Text style={styles.markDoneText}>{item.completed ? t.pending : t.complete}</Text>
                 </Pressable>
+                {item.completed && (
+                  <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
+                    <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
+                  </Pressable>
+                )}
                 <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
                   <Text style={styles.deleteText}>{t.delete}</Text>
                 </Pressable>
@@ -2616,6 +2662,11 @@ export default function App() {
               </View>
               <Text style={styles.entryNotes}>{item.task} ({item.completed ? t.completed : t.pending})</Text>
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
+              {item.completed && (
+                <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
+                  <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
+                </Pressable>
+              )}
             </View>
           )}
         />
@@ -2826,6 +2877,35 @@ export default function App() {
           {screen === 'report' && renderReport()}
           {screen === 'settings' && renderSettings()}
         </ScrollView>
+        <Modal transparent visible={Boolean(commentTaskId)} animationType="fade" onRequestClose={() => setCommentTaskId(null)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.commentTitle}</Text>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                value={commentDraft}
+                onChangeText={setCommentDraft}
+                placeholder={t.notesPlaceholder}
+                placeholderTextColor="#9198aa"
+                multiline
+              />
+              <View style={styles.actionsRow}>
+                <Pressable
+                  style={[styles.secondaryButton, styles.actionButton]}
+                  onPress={withInteractionFeedback(() => {
+                    setCommentTaskId(null);
+                    setCommentDraft('');
+                  })}
+                >
+                  <Text style={styles.secondaryButtonText}>{t.commentCancel}</Text>
+                </Pressable>
+                <Pressable style={[styles.primaryButton, styles.actionButton]} onPress={withInteractionFeedback(saveCompletedTaskComment)}>
+                  <Text style={styles.buttonText}>{t.commentSave}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
         {renderTabBar()}
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -3445,5 +3525,16 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     color: '#1d4ed8',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  modalCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
   },
 });
