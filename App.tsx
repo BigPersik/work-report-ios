@@ -91,9 +91,9 @@ const STATUS_FILTER_KEY = 'work-report-status-filter-v1';
 const REMINDER_LEAD_KEY = 'work-report-reminder-lead-v1';
 const LOCK_ENABLED_KEY = 'work-report-lock-enabled-v1';
 const DEFAULT_TASK_TEMPLATES: Record<Language, string[]> = {
-  uk: ['Щоденний звіт', 'Code review', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
+  uk: ['Щоденний звіт', 'Перевірка коду', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
   en: ['Daily report', 'Code review', 'Team meeting', 'Fix bug', 'Task planning'],
-  ro: ['Raport zilnic', 'Code review', 'Sedinta cu echipa', 'Rezolva bug', 'Planificare task-uri'],
+  ro: ['Raport zilnic', 'Revizuire cod', 'Sedinta cu echipa', 'Rezolva bug', 'Planificare task-uri'],
 };
 const formatLocalDate = (date: Date) => {
   const y = date.getFullYear();
@@ -161,6 +161,7 @@ const translations: Record<
     exportDaySummary: string;
     exportJson: string;
     importJson: string;
+    backupTitle: string;
     taskPresets: string;
     taskPresetPlaceholder: string;
     addPreset: string;
@@ -169,6 +170,30 @@ const translations: Record<
     commentTitle: string;
     commentSave: string;
     commentCancel: string;
+    searchPlaceholder: string;
+    tagPlaceholder: string;
+    filterArchive: string;
+    filterInboxOnly: string;
+    statusAll: string;
+    periodToday: string;
+    periodWeek: string;
+    periodMonth: string;
+    exportPdf: string;
+    productivityTitle: string;
+    reminderLeadTime: string;
+    securityTitle: string;
+    securityFaceIdOn: string;
+    securityUnlockNow: string;
+    lockTitle: string;
+    lockBody: string;
+    lockAction: string;
+    undoApplied: string;
+    undoAction: string;
+    notifInProgressTitle: string;
+    notifReminderTitle: string;
+    notifInMinutes: string;
+    notifStartNow: string;
+    unlockPrompt: string;
     on: string;
     off: string;
     themeLight: string;
@@ -254,13 +279,14 @@ const translations: Record<
     priorityLow: 'Низький',
     priorityMedium: 'Середній',
     priorityHigh: 'Високий',
-    addToInbox: 'В inbox',
-    inboxTitle: 'Inbox',
-    noInbox: 'Inbox порожній.',
+    addToInbox: 'У вхідні',
+    inboxTitle: 'Вхідні',
+    noInbox: 'Вхідні порожні.',
     planFromInbox: 'Запланувати',
     exportDaySummary: 'Експорт підсумку дня',
     exportJson: 'Експорт JSON',
     importJson: 'Імпорт JSON',
+    backupTitle: 'Резервна копія',
     taskPresets: 'Пресети задач',
     taskPresetPlaceholder: 'Новий пресет задачі',
     addPreset: 'Додати пресет',
@@ -269,6 +295,30 @@ const translations: Record<
     commentTitle: 'Коментар до завершеної задачі',
     commentSave: 'Зберегти',
     commentCancel: 'Скасувати',
+    searchPlaceholder: 'Пошук за задачею/коментарем/тегом',
+    tagPlaceholder: 'Тег (наприклад: dev, docs)',
+    filterArchive: 'Архів',
+    filterInboxOnly: 'Лише вхідні',
+    statusAll: 'Всі',
+    periodToday: 'Сьогодні',
+    periodWeek: 'Тиждень',
+    periodMonth: 'Місяць',
+    exportPdf: 'Експорт PDF',
+    productivityTitle: 'Продуктивність',
+    reminderLeadTime: 'Час нагадування',
+    securityTitle: 'Безпека',
+    securityFaceIdOn: 'Face ID увімк.',
+    securityUnlockNow: 'Розблокувати зараз',
+    lockTitle: 'DayFlow заблоковано',
+    lockBody: 'Використай Face ID / біометрію для входу.',
+    lockAction: 'Розблокувати',
+    undoApplied: 'Дію виконано',
+    undoAction: 'Скасувати',
+    notifInProgressTitle: 'DayFlow: задача в процесі',
+    notifReminderTitle: 'Нагадування DayFlow',
+    notifInMinutes: 'Через {minutes} хв: {task}',
+    notifStartNow: 'Почни зараз: {task}',
+    unlockPrompt: 'Розблокувати DayFlow',
     on: 'Увімк.',
     off: 'Вимк.',
     themeLight: 'Світла',
@@ -360,6 +410,7 @@ const translations: Record<
     exportDaySummary: 'Export day summary',
     exportJson: 'Export JSON',
     importJson: 'Import JSON',
+    backupTitle: 'Backup',
     taskPresets: 'Task presets',
     taskPresetPlaceholder: 'New task preset',
     addPreset: 'Add preset',
@@ -368,6 +419,30 @@ const translations: Record<
     commentTitle: 'Comment for completed task',
     commentSave: 'Save',
     commentCancel: 'Cancel',
+    searchPlaceholder: 'Search by task/comment/tag',
+    tagPlaceholder: 'Tag (e.g. dev, docs)',
+    filterArchive: 'Archive',
+    filterInboxOnly: 'Inbox only',
+    statusAll: 'All',
+    periodToday: 'Today',
+    periodWeek: 'Week',
+    periodMonth: 'Month',
+    exportPdf: 'Export PDF',
+    productivityTitle: 'Productivity',
+    reminderLeadTime: 'Reminder lead time',
+    securityTitle: 'Security',
+    securityFaceIdOn: 'Face ID On',
+    securityUnlockNow: 'Unlock now',
+    lockTitle: 'DayFlow Locked',
+    lockBody: 'Use Face ID / biometrics to continue.',
+    lockAction: 'Unlock',
+    undoApplied: 'Action applied',
+    undoAction: 'Undo',
+    notifInProgressTitle: 'DayFlow: task in progress',
+    notifReminderTitle: 'DayFlow reminder',
+    notifInMinutes: 'In {minutes} minutes: {task}',
+    notifStartNow: 'Start now: {task}',
+    unlockPrompt: 'Unlock DayFlow',
     on: 'On',
     off: 'Off',
     themeLight: 'Light',
@@ -459,6 +534,7 @@ const translations: Record<
     exportDaySummary: 'Export rezumat zi',
     exportJson: 'Export JSON',
     importJson: 'Import JSON',
+    backupTitle: 'Copie de rezervă',
     taskPresets: 'Preseturi task',
     taskPresetPlaceholder: 'Preset nou task',
     addPreset: 'Adauga preset',
@@ -467,6 +543,30 @@ const translations: Record<
     commentTitle: 'Comentariu pentru task finalizat',
     commentSave: 'Salveaza',
     commentCancel: 'Anuleaza',
+    searchPlaceholder: 'Caută după task/comentariu/tag',
+    tagPlaceholder: 'Tag (ex: dev, docs)',
+    filterArchive: 'Arhivă',
+    filterInboxOnly: 'Doar inbox',
+    statusAll: 'Toate',
+    periodToday: 'Astăzi',
+    periodWeek: 'Săptămână',
+    periodMonth: 'Lună',
+    exportPdf: 'Export PDF',
+    productivityTitle: 'Productivitate',
+    reminderLeadTime: 'Timp înainte de notificare',
+    securityTitle: 'Securitate',
+    securityFaceIdOn: 'Face ID pornit',
+    securityUnlockNow: 'Deblochează acum',
+    lockTitle: 'DayFlow blocat',
+    lockBody: 'Folosește Face ID / biometria pentru a continua.',
+    lockAction: 'Deblochează',
+    undoApplied: 'Acțiune aplicată',
+    undoAction: 'Anulează',
+    notifInProgressTitle: 'DayFlow: task în desfășurare',
+    notifReminderTitle: 'Reminder DayFlow',
+    notifInMinutes: 'Peste {minutes} minute: {task}',
+    notifStartNow: 'Începe acum: {task}',
+    unlockPrompt: 'Deblochează DayFlow',
     on: 'Pornit',
     off: 'Oprit',
     themeLight: 'Luminoasă',
@@ -1740,7 +1840,7 @@ export default function App() {
     }
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'DayFlow: task in progress',
+        title: t.notifInProgressTitle,
         body: taskTitle,
         sound: true,
       },
@@ -1768,8 +1868,8 @@ export default function App() {
     if (leadDate.getTime() > now.getTime()) {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'DayFlow reminder',
-          body: `In ${reminderLeadMinutes} minutes: ${entry.task}`,
+          title: t.notifReminderTitle,
+          body: t.notifInMinutes.replace('{minutes}', String(reminderLeadMinutes)).replace('{task}', localizedTask(entry)),
           sound: true,
         },
         trigger: {
@@ -1781,8 +1881,8 @@ export default function App() {
     if (atMs > now.getTime()) {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'DayFlow reminder',
-          body: `Start now: ${entry.task}`,
+          title: t.notifReminderTitle,
+          body: t.notifStartNow.replace('{task}', localizedTask(entry)),
           sound: true,
         },
         trigger: {
@@ -1836,8 +1936,8 @@ export default function App() {
       return;
     }
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock DayFlow',
-      fallbackLabel: 'Use passcode',
+      promptMessage: t.unlockPrompt,
+      fallbackLabel: t.lockAction,
     });
     if (result.success) {
       setIsUnlocked(true);
@@ -2091,10 +2191,10 @@ export default function App() {
         )
         .join('');
       const html = `<!doctype html><html><body style="font-family: -apple-system, Segoe UI, Arial; padding: 20px;">
-      <h1>DayFlow Report</h1>
-      <p>Total: ${summary.total} | Done: ${summary.done} | Pending: ${summary.pending}</p>
+      <h1>DayFlow ${t.menuReport}</h1>
+      <p>${t.totalTasks}: ${summary.total} | ${t.doneTasks}: ${summary.done} | ${t.pendingTasks}: ${summary.pending}</p>
       <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%;">
-      <thead><tr><th>Date</th><th>Task</th><th>Priority</th><th>Status</th><th>Tracked</th></tr></thead>
+      <thead><tr><th>${t.selectDay}</th><th>${t.addTask}</th><th>${t.priority}</th><th>${t.pendingTasks}</th><th>${t.taskTime}</th></tr></thead>
       <tbody>${rows}</tbody></table></body></html>`;
       const file = await Print.printToFileAsync({ html });
       const canShare = await Sharing.isAvailableAsync();
@@ -2300,7 +2400,7 @@ export default function App() {
   const getPriorityFilterLabel = (filter: PriorityFilter) =>
     filter === 'all' ? t.priorityAll : getPriorityLabel(filter);
   const getStatusFilterLabel = (filter: StatusFilter) =>
-    filter === 'all' ? 'All' : filter === 'completed' ? t.completed : t.pending;
+    filter === 'all' ? t.statusAll : filter === 'completed' ? t.completed : t.pending;
 
   const activeBreak = workDay.breaks.find((item) => !item.endedAt);
   const isDayRunning = Boolean(workDay.startedAt) && !workDay.endedAt;
@@ -2492,11 +2592,11 @@ export default function App() {
   }, [nowTick, scheduledEntries]);
   const productivityBars = useMemo(
     () => [
-      { label: 'Today', value: todayStats.tracked },
-      { label: 'Week', value: weekStats.tracked },
-      { label: 'Month', value: monthStats.tracked },
+      { label: t.periodToday, value: todayStats.tracked },
+      { label: t.periodWeek, value: weekStats.tracked },
+      { label: t.periodMonth, value: monthStats.tracked },
     ],
-    [monthStats.tracked, todayStats.tracked, weekStats.tracked],
+    [monthStats.tracked, t.periodMonth, t.periodToday, t.periodWeek, todayStats.tracked, weekStats.tracked],
   );
   const maxBar = Math.max(1, ...productivityBars.map((b) => b.value));
   const topTasks = useMemo(
@@ -2872,7 +2972,7 @@ export default function App() {
           style={styles.input}
           value={form.tag}
           onChangeText={(text) => updateField('tag', text)}
-          placeholder="Tag (e.g. dev, docs)"
+          placeholder={t.tagPlaceholder}
         />
         <View style={styles.actionsRow}>
           <Pressable style={[styles.primaryButton, styles.actionButton]} onPress={withInteractionFeedback(addTask)}>
@@ -2890,7 +2990,7 @@ export default function App() {
           style={styles.input}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search task/comment/tag"
+          placeholder={t.searchPlaceholder}
           placeholderTextColor="#9198aa"
         />
         <View style={styles.languageButtons}>
@@ -2924,13 +3024,13 @@ export default function App() {
             onPress={withInteractionFeedback(() => setShowArchiveOnly((prev) => !prev))}
             style={[styles.languageButton, showArchiveOnly && styles.languageButtonActive]}
           >
-            <Text style={[styles.languageButtonText, showArchiveOnly && styles.languageButtonTextActive]}>Archive</Text>
+            <Text style={[styles.languageButtonText, showArchiveOnly && styles.languageButtonTextActive]}>{t.filterArchive}</Text>
           </Pressable>
           <Pressable
             onPress={withInteractionFeedback(() => setInboxOnly((prev) => !prev))}
             style={[styles.languageButton, inboxOnly && styles.languageButtonActive]}
           >
-            <Text style={[styles.languageButtonText, inboxOnly && styles.languageButtonTextActive]}>Inbox only</Text>
+            <Text style={[styles.languageButtonText, inboxOnly && styles.languageButtonTextActive]}>{t.filterInboxOnly}</Text>
           </Pressable>
         </View>
       </View>
@@ -3071,15 +3171,15 @@ export default function App() {
       </View>
       <View style={styles.summaryRow}>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Today</Text>
+          <Text style={styles.summaryLabel}>{t.periodToday}</Text>
           <Text style={styles.summaryValue}>{todayStats.done}/{todayStats.tasks}</Text>
         </View>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Week</Text>
+          <Text style={styles.summaryLabel}>{t.periodWeek}</Text>
           <Text style={styles.summaryValue}>{weekStats.done}/{weekStats.tasks}</Text>
         </View>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Month</Text>
+          <Text style={styles.summaryLabel}>{t.periodMonth}</Text>
           <Text style={styles.summaryValue}>{monthStats.done}/{monthStats.tasks}</Text>
         </View>
       </View>
@@ -3090,7 +3190,7 @@ export default function App() {
           style={styles.input}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search task/comment/tag"
+          placeholder={t.searchPlaceholder}
           placeholderTextColor="#9198aa"
         />
         <View style={styles.languageButtons}>
@@ -3122,7 +3222,7 @@ export default function App() {
             onPress={withInteractionFeedback(() => setShowArchiveOnly((prev) => !prev))}
             style={[styles.languageButton, showArchiveOnly && styles.languageButtonActive]}
           >
-            <Text style={[styles.languageButtonText, showArchiveOnly && styles.languageButtonTextActive]}>Archive</Text>
+            <Text style={[styles.languageButtonText, showArchiveOnly && styles.languageButtonTextActive]}>{t.filterArchive}</Text>
           </Pressable>
         </View>
       </View>
@@ -3137,13 +3237,13 @@ export default function App() {
             <Text style={styles.secondaryButtonText}>{t.exportDaySummary}</Text>
           </Pressable>
           <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportPdfReport)}>
-            <Text style={styles.secondaryButtonText}>Export PDF</Text>
+            <Text style={styles.secondaryButtonText}>{t.exportPdf}</Text>
           </Pressable>
         </View>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Productivity</Text>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.productivityTitle}</Text>
         {productivityBars.map((bar) => (
           <View key={bar.label} style={styles.chartRow}>
             <Text style={styles.chartLabel}>{bar.label}</Text>
@@ -3317,7 +3417,7 @@ export default function App() {
         <Pressable style={[styles.secondaryButton, styles.testNotificationButton]} onPress={withInteractionFeedback(sendTestNotification)}>
           <Text style={styles.secondaryButtonText}>{t.testNotification}</Text>
         </Pressable>
-        <Text style={[styles.menuSubtitle, { marginTop: 10 }]}>Reminder lead time</Text>
+        <Text style={[styles.menuSubtitle, { marginTop: 10 }]}>{t.reminderLeadTime}</Text>
         <View style={styles.languageButtons}>
           {([5, 10, 15] as ReminderLead[]).map((lead) => (
             <Pressable
@@ -3333,23 +3433,23 @@ export default function App() {
         </View>
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Security</Text>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.securityTitle}</Text>
         <View style={styles.languageButtons}>
           <Pressable
             onPress={withInteractionFeedback(() => setLockEnabled(true))}
             style={[styles.languageButton, lockEnabled && styles.languageButtonActive]}
           >
-            <Text style={[styles.languageButtonText, lockEnabled && styles.languageButtonTextActive]}>Face ID On</Text>
+            <Text style={[styles.languageButtonText, lockEnabled && styles.languageButtonTextActive]}>{t.securityFaceIdOn}</Text>
           </Pressable>
           <Pressable
             onPress={withInteractionFeedback(() => setLockEnabled(false))}
             style={[styles.languageButton, !lockEnabled && styles.languageButtonActive]}
           >
-            <Text style={[styles.languageButtonText, !lockEnabled && styles.languageButtonTextActive]}>Off</Text>
+            <Text style={[styles.languageButtonText, !lockEnabled && styles.languageButtonTextActive]}>{t.off}</Text>
           </Pressable>
           {lockEnabled && (
             <Pressable onPress={withInteractionFeedback(() => void unlockWithBiometrics())} style={styles.languageButton}>
-              <Text style={styles.languageButtonText}>Unlock now</Text>
+              <Text style={styles.languageButtonText}>{t.securityUnlockNow}</Text>
             </Pressable>
           )}
         </View>
@@ -3411,7 +3511,7 @@ export default function App() {
         )}
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Backup</Text>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.backupTitle}</Text>
         <View style={styles.actionsRow}>
           <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportJsonBackup)}>
             <Text style={styles.secondaryButtonText}>{t.exportJson}</Text>
@@ -3465,10 +3565,10 @@ export default function App() {
         />
         {!isUnlocked ? (
           <View style={styles.lockWrap}>
-            <Text style={styles.lockTitle}>DayFlow Locked</Text>
-            <Text style={styles.lockText}>Use Face ID / biometrics to continue.</Text>
+            <Text style={styles.lockTitle}>{t.lockTitle}</Text>
+            <Text style={styles.lockText}>{t.lockBody}</Text>
             <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(() => void unlockWithBiometrics())}>
-              <Text style={styles.buttonText}>Unlock</Text>
+              <Text style={styles.buttonText}>{t.lockAction}</Text>
             </Pressable>
           </View>
         ) : (
@@ -3517,9 +3617,9 @@ export default function App() {
         {renderTabBar()}
         {undoSnapshot && isUnlocked && (
           <View style={styles.undoBar}>
-            <Text style={styles.undoText}>Action applied</Text>
+            <Text style={styles.undoText}>{t.undoApplied}</Text>
             <Pressable onPress={withInteractionFeedback(undoLastAction)}>
-              <Text style={styles.undoAction}>Undo</Text>
+              <Text style={styles.undoAction}>{t.undoAction}</Text>
             </Pressable>
           </View>
         )}
