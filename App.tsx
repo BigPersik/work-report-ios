@@ -832,7 +832,6 @@ const CLICK_SOUND_URI =
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
     shouldShowBanner: true,
@@ -3532,64 +3531,60 @@ export default function App() {
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.tasksForDay} {form.date}</Text>
-        <FlatList
-          data={tasksForDay}
-          keyExtractor={(item) => item.id}
-          scrollEnabled
-          nestedScrollEnabled
-          style={styles.dayTasksList}
-          ListEmptyComponent={
+        <View style={styles.dayTasksList}>
+          {tasksForDay.length === 0 ? (
             <View>
               <Text style={styles.emptyText}>{t.noTasksForDay}</Text>
               <Text style={[styles.entryNotes, { marginTop: 8, textAlign: 'center' }]}>{t.emptyTasksHint}</Text>
             </View>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.entryCard}>
-              <View style={styles.entryHeader}>
-                <Text style={styles.entryTask}>{item.time}</Text>
-                <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
-                  <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
+          ) : (
+            tasksForDay.map((item) => (
+              <View key={item.id} style={styles.entryCard}>
+                <View style={styles.entryHeader}>
+                  <Text style={styles.entryTask}>{item.time}</Text>
+                  <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
+                    <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
+                  </View>
+                </View>
+                <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
+                  <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+                </View>
+                <Text style={styles.entryTask}>{localizedTask(item)}</Text>
+                {(item.repeatRule === 'daily' || item.repeatRule === 'weekly') && (
+                  <Text style={[styles.entryNotes, { fontStyle: 'italic', opacity: 0.9 }]}>
+                    ↻ {item.repeatRule === 'daily' ? t.taskRepeatBadgeDaily : t.taskRepeatBadgeWeekly}
+                  </Text>
+                )}
+                {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
+                {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
+                <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
+                <View style={styles.taskActionRow}>
+                  <Pressable onPress={withInteractionFeedback(() => (item.trackingStartedAt ? pauseTaskTimer(item.id) : startTaskTimer(item.id)))}>
+                    <Text style={styles.markDoneText}>
+                      {item.trackingStartedAt ? t.pauseTask : item.trackedMs > 0 ? t.resumeTask : t.startTask}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={withInteractionFeedback(() => toggleDone(item.id))}>
+                    <Text style={styles.markDoneText}>{item.completed ? t.pending : t.complete}</Text>
+                  </Pressable>
+                  {item.completed && (
+                    <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
+                      <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
+                    </Pressable>
+                  )}
+                  {Platform.OS !== 'web' && (
+                    <Pressable onPress={withInteractionFeedback(() => addTaskToDeviceCalendar(item))}>
+                      <Text style={styles.markDoneText}>{t.addToCalendar}</Text>
+                    </Pressable>
+                  )}
+                  <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
+                    <Text style={styles.deleteText}>{t.delete}</Text>
+                  </Pressable>
                 </View>
               </View>
-              <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
-                <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
-              </View>
-              <Text style={styles.entryTask}>{localizedTask(item)}</Text>
-              {(item.repeatRule === 'daily' || item.repeatRule === 'weekly') && (
-                <Text style={[styles.entryNotes, { fontStyle: 'italic', opacity: 0.9 }]}>
-                  ↻ {item.repeatRule === 'daily' ? t.taskRepeatBadgeDaily : t.taskRepeatBadgeWeekly}
-                </Text>
-              )}
-              {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
-              {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
-              <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
-              <View style={styles.taskActionRow}>
-                <Pressable onPress={withInteractionFeedback(() => (item.trackingStartedAt ? pauseTaskTimer(item.id) : startTaskTimer(item.id)))}>
-                  <Text style={styles.markDoneText}>
-                    {item.trackingStartedAt ? t.pauseTask : item.trackedMs > 0 ? t.resumeTask : t.startTask}
-                  </Text>
-                </Pressable>
-                <Pressable onPress={withInteractionFeedback(() => toggleDone(item.id))}>
-                  <Text style={styles.markDoneText}>{item.completed ? t.pending : t.complete}</Text>
-                </Pressable>
-                {item.completed && (
-                  <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
-                    <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
-                  </Pressable>
-                )}
-                {Platform.OS !== 'web' && (
-                  <Pressable onPress={withInteractionFeedback(() => addTaskToDeviceCalendar(item))}>
-                    <Text style={styles.markDoneText}>{t.addToCalendar}</Text>
-                  </Pressable>
-                )}
-                <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
-                  <Text style={styles.deleteText}>{t.delete}</Text>
-                </Pressable>
-              </View>
-            </View>
+            ))
           )}
-        />
+        </View>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -3597,52 +3592,49 @@ export default function App() {
           <Text style={styles.secondaryButtonText}>{t.generalTasks}</Text>
         </Pressable>
         {showGeneralTasks && (
-          <FlatList
-            data={generalPendingTasks}
-            keyExtractor={(item) => `general-${item.id}`}
-            scrollEnabled={false}
-            style={styles.generalList}
-            ListEmptyComponent={<Text style={styles.emptyText}>{t.noGeneralTasks}</Text>}
-            renderItem={({ item }) => (
-              <View style={styles.entryCard}>
-                <Text style={styles.entryTask}>{item.date} {item.time}</Text>
-                <Text style={styles.entryNotes}>{localizedTask(item)}</Text>
-              </View>
+          <View style={styles.generalList}>
+            {generalPendingTasks.length === 0 ? (
+              <Text style={styles.emptyText}>{t.noGeneralTasks}</Text>
+            ) : (
+              generalPendingTasks.map((item) => (
+                <View key={`general-${item.id}`} style={styles.entryCard}>
+                  <Text style={styles.entryTask}>{item.date} {item.time}</Text>
+                  <Text style={styles.entryNotes}>{localizedTask(item)}</Text>
+                </View>
+              ))
             )}
-          />
+          </View>
         )}
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.inboxTitle}</Text>
-        <FlatList
-          data={inboxEntries}
-          keyExtractor={(item) => `inbox-${item.id}`}
-          scrollEnabled={false}
-          ListEmptyComponent={
+        <View>
+          {inboxEntries.length === 0 ? (
             <View>
               <Text style={styles.emptyText}>{t.noInbox}</Text>
               <Text style={[styles.entryNotes, { marginTop: 8, textAlign: 'center' }]}>{t.emptyInboxHint}</Text>
             </View>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.entryCard}>
-              <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
-                <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+          ) : (
+            inboxEntries.map((item) => (
+              <View key={`inbox-${item.id}`} style={styles.entryCard}>
+                <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
+                  <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+                </View>
+                <Text style={styles.entryTask}>{localizedTask(item)}</Text>
+                {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
+                {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
+                <View style={styles.taskActionRow}>
+                  <Pressable onPress={withInteractionFeedback(() => planInboxTask(item.id))}>
+                    <Text style={styles.markDoneText}>{t.planFromInbox}</Text>
+                  </Pressable>
+                  <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
+                    <Text style={styles.deleteText}>{t.delete}</Text>
+                  </Pressable>
+                </View>
               </View>
-              <Text style={styles.entryTask}>{localizedTask(item)}</Text>
-              {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
-              {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
-              <View style={styles.taskActionRow}>
-                <Pressable onPress={withInteractionFeedback(() => planInboxTask(item.id))}>
-                  <Text style={styles.markDoneText}>{t.planFromInbox}</Text>
-                </Pressable>
-                <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
-                  <Text style={styles.deleteText}>{t.delete}</Text>
-                </Pressable>
-              </View>
-            </View>
+            ))
           )}
-        />
+        </View>
       </View>
     </>
   );
@@ -3798,50 +3790,50 @@ export default function App() {
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.topTasks}</Text>
-        <FlatList
-          data={topTasks}
-          keyExtractor={(item) => `top-${item.id}`}
-          scrollEnabled={false}
-          ListEmptyComponent={<Text style={styles.emptyText}>{t.noTasksForDay}</Text>}
-          renderItem={({ item, index }) => (
-            <View style={styles.entryCard}>
-              <Text style={styles.entryTask}>{index + 1}. {localizedTask(item)}</Text>
-              <Text style={styles.entryNotes}>
-                {t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))} (
-                {dayStats.netMs > 0 ? Math.round((getTaskTrackedMs(item, nowTick) / dayStats.netMs) * 100) : 0}%)
-              </Text>
-            </View>
+        <View>
+          {topTasks.length === 0 ? (
+            <Text style={styles.emptyText}>{t.noTasksForDay}</Text>
+          ) : (
+            topTasks.map((item, index) => (
+              <View key={`top-${item.id}`} style={styles.entryCard}>
+                <Text style={styles.entryTask}>{index + 1}. {localizedTask(item)}</Text>
+                <Text style={styles.entryNotes}>
+                  {t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))} (
+                  {dayStats.netMs > 0 ? Math.round((getTaskTrackedMs(item, nowTick) / dayStats.netMs) * 100) : 0}%)
+                </Text>
+              </View>
+            ))
           )}
-        />
+        </View>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.allTasks}</Text>
-        <FlatList
-          data={allTasks}
-          keyExtractor={(item) => item.id}
-          scrollEnabled={false}
-          ListEmptyComponent={<Text style={styles.emptyText}>{t.noTasksForDay}</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.entryCard}>
-              <Text style={styles.entryTask}>{item.date} {item.time}</Text>
-              <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
-                <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+        <View>
+          {allTasks.length === 0 ? (
+            <Text style={styles.emptyText}>{t.noTasksForDay}</Text>
+          ) : (
+            allTasks.map((item) => (
+              <View key={item.id} style={styles.entryCard}>
+                <Text style={styles.entryTask}>{item.date} {item.time}</Text>
+                <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
+                  <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+                </View>
+                <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
+                  <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
+                </View>
+                <Text style={styles.entryNotes}>{localizedTask(item)}</Text>
+                {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
+                <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
+                {item.completed && (
+                  <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
+                    <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
+                  </Pressable>
+                )}
               </View>
-              <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
-                <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
-              </View>
-              <Text style={styles.entryNotes}>{localizedTask(item)}</Text>
-              {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
-              <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
-              {item.completed && (
-                <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
-                  <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
-                </Pressable>
-              )}
-            </View>
+            ))
           )}
-        />
+        </View>
       </View>
     </>
   );
@@ -4516,7 +4508,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   dayTasksList: {
-    maxHeight: 360,
+    marginTop: 4,
   },
   actionsRow: {
     flexDirection: 'row',
