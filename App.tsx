@@ -883,21 +883,23 @@ export default function App() {
 
   useEffect(() => {
     lastDateIndexRef.current = selectedDateIndex;
+    dateWheelRef.current?.scrollToIndex({ index: selectedDateIndex, animated: false });
   }, [selectedDateIndex]);
 
   useEffect(() => {
     lastTimeIndexRef.current = selectedTimeIndex;
+    timeWheelRef.current?.scrollToIndex({ index: selectedTimeIndex, animated: false });
   }, [selectedTimeIndex]);
 
-  const snapDateWheelToOffset = (offsetY: number) => {
+  const getWheelIndex = (offsetY: number, length: number) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
-    const bounded = Math.max(0, Math.min(dateOptions.length - 1, index));
-    dateWheelRef.current?.scrollToIndex({ index: bounded, animated: true });
-    return bounded;
+    return Math.max(0, Math.min(length - 1, index));
   };
 
-  const handleDateWheelScroll = (offsetY: number, shouldSnap = false) => {
-    const bounded = shouldSnap ? snapDateWheelToOffset(offsetY) : Math.max(0, Math.min(dateOptions.length - 1, Math.round(offsetY / WHEEL_ITEM_HEIGHT)));
+  const finalizeDateWheel = (offsetY: number) => {
+    const bounded = getWheelIndex(offsetY, dateOptions.length);
+    const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
+    dateWheelRef.current?.scrollToOffset({ offset: snappedOffset, animated: true });
     if (bounded !== lastDateIndexRef.current) {
       lastDateIndexRef.current = bounded;
       const target = dateOptions[bounded];
@@ -907,15 +909,10 @@ export default function App() {
     }
   };
 
-  const snapTimeWheelToOffset = (offsetY: number) => {
-    const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
-    const bounded = Math.max(0, Math.min(timeOptions.length - 1, index));
-    timeWheelRef.current?.scrollToIndex({ index: bounded, animated: true });
-    return bounded;
-  };
-
-  const handleTimeWheelScroll = (offsetY: number, shouldSnap = false) => {
-    const bounded = shouldSnap ? snapTimeWheelToOffset(offsetY) : Math.max(0, Math.min(timeOptions.length - 1, Math.round(offsetY / WHEEL_ITEM_HEIGHT)));
+  const finalizeTimeWheel = (offsetY: number) => {
+    const bounded = getWheelIndex(offsetY, timeOptions.length);
+    const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
+    timeWheelRef.current?.scrollToOffset({ offset: snappedOffset, animated: true });
     if (bounded !== lastTimeIndexRef.current) {
       lastTimeIndexRef.current = bounded;
       const target = timeOptions[bounded];
@@ -1433,12 +1430,13 @@ export default function App() {
               bounces={false}
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
-              onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
-              onMomentumScrollEnd={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y, true)}
-              onScrollEndDrag={(event) => {
-                setTimeout(() => {
-                  handleDateWheelScroll(event.nativeEvent.contentOffset.y, true);
-                }, 0);
+              onMomentumScrollEnd={(event) => finalizeDateWheel(event.nativeEvent.contentOffset.y)}
+              onScrollEndDrag={(event) => finalizeDateWheel(event.nativeEvent.contentOffset.y)}
+              onScrollToIndexFailed={(info) => {
+                dateWheelRef.current?.scrollToOffset({
+                  offset: info.index * WHEEL_ITEM_HEIGHT,
+                  animated: false,
+                });
               }}
               renderItem={({ item }) => {
                 const selected = item === form.date;
@@ -1449,6 +1447,10 @@ export default function App() {
                       triggerTapSound();
                       triggerTapHaptic();
                       void selectDate(item, false);
+                      const idx = dateOptions.indexOf(item);
+                      if (idx >= 0) {
+                        dateWheelRef.current?.scrollToIndex({ index: idx, animated: true });
+                      }
                     }}
                   >
                     <Text style={[styles.dateWheelText, selected && styles.dateWheelTextSelected]}>
@@ -1474,12 +1476,13 @@ export default function App() {
               bounces={false}
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
-              onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
-              onMomentumScrollEnd={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true)}
-              onScrollEndDrag={(event) => {
-                setTimeout(() => {
-                  handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true);
-                }, 0);
+              onMomentumScrollEnd={(event) => finalizeTimeWheel(event.nativeEvent.contentOffset.y)}
+              onScrollEndDrag={(event) => finalizeTimeWheel(event.nativeEvent.contentOffset.y)}
+              onScrollToIndexFailed={(info) => {
+                timeWheelRef.current?.scrollToOffset({
+                  offset: info.index * WHEEL_ITEM_HEIGHT,
+                  animated: false,
+                });
               }}
               renderItem={({ item }) => {
                 const selected = item === form.time;
@@ -1490,6 +1493,10 @@ export default function App() {
                       triggerTapSound();
                       triggerTapHaptic();
                       void selectTime(item, false);
+                      const idx = timeOptions.indexOf(item);
+                      if (idx >= 0) {
+                        timeWheelRef.current?.scrollToIndex({ index: idx, animated: true });
+                      }
                     }}
                   >
                     <Text style={[styles.timeWheelText, selected && styles.timeWheelTextSelected]}>{item}</Text>
