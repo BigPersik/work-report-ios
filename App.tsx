@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
@@ -59,6 +60,8 @@ const STORAGE_KEY = 'work-report-entries-v1';
 const LANGUAGE_KEY = 'work-report-language-v1';
 const WORKDAY_KEY = 'work-report-workday-v1';
 const THEME_KEY = 'work-report-theme-v1';
+const SOUND_KEY = 'work-report-sound-v1';
+const HAPTICS_KEY = 'work-report-haptics-v1';
 const formatLocalDate = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -85,6 +88,10 @@ const translations: Record<
     backToMenu: string;
     language: string;
     theme: string;
+    sound: string;
+    haptics: string;
+    on: string;
+    off: string;
     themeLight: string;
     themeDark: string;
     themeColorful: string;
@@ -156,6 +163,10 @@ const translations: Record<
     backToMenu: 'Назад',
     language: 'Мова',
     theme: 'Тема',
+    sound: 'Звук',
+    haptics: 'Вібрація',
+    on: 'Увімк.',
+    off: 'Вимк.',
     themeLight: 'Світла',
     themeDark: 'Темна',
     themeColorful: 'Кольорова',
@@ -226,6 +237,10 @@ const translations: Record<
     backToMenu: 'Back',
     language: 'Language',
     theme: 'Theme',
+    sound: 'Sound',
+    haptics: 'Haptics',
+    on: 'On',
+    off: 'Off',
     themeLight: 'Light',
     themeDark: 'Dark',
     themeColorful: 'Colorful',
@@ -296,6 +311,10 @@ const translations: Record<
     backToMenu: 'Înapoi',
     language: 'Limbă',
     theme: 'Temă',
+    sound: 'Sunet',
+    haptics: 'Vibratie',
+    on: 'Pornit',
+    off: 'Oprit',
     themeLight: 'Luminoasă',
     themeDark: 'Întunecată',
     themeColorful: 'Colorată',
@@ -370,6 +389,8 @@ const getTaskTrackedMs = (entry: TaskEntry, nowMs: number) => {
   return Math.max(0, entry.trackedMs + live);
 };
 const WHEEL_ITEM_HEIGHT = 40;
+const CLICK_SOUND_URI =
+  'data:audio/wav;base64,UklGRjwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YRgAAAAAABkAMgBKAGAAdABmAE8AOQAjAAwAAAAA8f/k/9f/yv/N/9f/6f8AAP//';
 
 function TabGlyph({
   type,
@@ -415,6 +436,8 @@ export default function App() {
   const [form, setForm] = useState<NewTask>(INITIAL_FORM);
   const [language, setLanguage] = useState<Language>('uk');
   const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [screen, setScreen] = useState<Screen>('calendar');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
@@ -441,6 +464,54 @@ export default function App() {
   const lastTimeIndexRef = useRef<number>(-1);
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
+  const clickSoundRef = useRef<Audio.Sound | null>(null);
+  const triggerTapHaptic = () => {
+    if (hapticsEnabled && Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+  const triggerTapSound = () => {
+    if (!soundEnabled) {
+      return;
+    }
+    const sound = clickSoundRef.current;
+    if (!sound) {
+      return;
+    }
+    void sound.replayAsync().catch(() => {});
+  };
+  const withInteractionFeedback = (action: () => void | Promise<void>) => () => {
+    triggerTapSound();
+    triggerTapHaptic();
+    void action();
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const prepareClickSound = async () => {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: CLICK_SOUND_URI },
+          { volume: 0.2, shouldPlay: false },
+        );
+        if (mounted) {
+          clickSoundRef.current = sound;
+        } else {
+          await sound.unloadAsync();
+        }
+      } catch {
+        clickSoundRef.current = null;
+      }
+    };
+    void prepareClickSound();
+    return () => {
+      mounted = false;
+      if (clickSoundRef.current) {
+        void clickSoundRef.current.unloadAsync();
+        clickSoundRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
@@ -532,11 +603,13 @@ export default function App() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [raw, savedLanguage, rawWorkDay, savedTheme] = await Promise.all([
+        const [raw, savedLanguage, rawWorkDay, savedTheme, savedSound, savedHaptics] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEY),
           AsyncStorage.getItem(LANGUAGE_KEY),
           AsyncStorage.getItem(WORKDAY_KEY),
           AsyncStorage.getItem(THEME_KEY),
+          AsyncStorage.getItem(SOUND_KEY),
+          AsyncStorage.getItem(HAPTICS_KEY),
         ]);
         if (raw) {
           const parsed: TaskEntry[] = JSON.parse(raw);
@@ -558,6 +631,12 @@ export default function App() {
         }
         if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'colorful') {
           setThemeMode(savedTheme);
+        }
+        if (savedSound === '0' || savedSound === '1') {
+          setSoundEnabled(savedSound === '1');
+        }
+        if (savedHaptics === '0' || savedHaptics === '1') {
+          setHapticsEnabled(savedHaptics === '1');
         }
         if (rawWorkDay) {
           const parsedWorkDay: WorkDayState = JSON.parse(rawWorkDay);
@@ -586,10 +665,12 @@ export default function App() {
       AsyncStorage.setItem(LANGUAGE_KEY, language),
       AsyncStorage.setItem(WORKDAY_KEY, JSON.stringify(workDay)),
       AsyncStorage.setItem(THEME_KEY, themeMode),
+      AsyncStorage.setItem(SOUND_KEY, soundEnabled ? '1' : '0'),
+      AsyncStorage.setItem(HAPTICS_KEY, hapticsEnabled ? '1' : '0'),
     ]).catch(() => {
       Alert.alert(t.error, t.saveError);
     });
-  }, [entries, language, loading, t.error, t.saveError, themeMode, workDay]);
+  }, [entries, hapticsEnabled, language, loading, soundEnabled, t.error, t.saveError, themeMode, workDay]);
 
   const summary = useMemo(() => {
     const total = entries.length;
@@ -686,14 +767,14 @@ export default function App() {
     setForm((prev) => ({ ...prev, date: value }));
     const selected = new Date(`${value}T00:00:00`);
     setDisplayedMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
-    if (withHaptic && Platform.OS !== 'web') {
+    if (withHaptic && hapticsEnabled && Platform.OS !== 'web') {
       await Haptics.selectionAsync();
     }
   };
 
   const selectTime = async (value: string, withHaptic = true) => {
     setForm((prev) => ({ ...prev, time: value }));
-    if (withHaptic && Platform.OS !== 'web') {
+    if (withHaptic && hapticsEnabled && Platform.OS !== 'web') {
       await Haptics.selectionAsync();
     }
   };
@@ -1114,7 +1195,7 @@ export default function App() {
           </View>
         </View>
         {!isDayRunning && (
-          <Pressable style={styles.primaryButton} onPress={startDay}>
+          <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(startDay)}>
             <Text style={styles.buttonText}>{t.startDay}</Text>
           </Pressable>
         )}
@@ -1123,11 +1204,11 @@ export default function App() {
             <View style={styles.dayControlRow}>
               <Pressable
                 style={[styles.dayControlButton, styles.pauseButton]}
-                onPress={activeBreak ? resumeDay : startPause}
+                onPress={withInteractionFeedback(activeBreak ? resumeDay : startPause)}
               >
                 <Text style={styles.dayControlButtonText}>{activeBreak ? t.resumeDay : t.pauseDay}</Text>
               </Pressable>
-              <Pressable style={[styles.dayControlButton, styles.endDayButton]} onPress={endDay}>
+              <Pressable style={[styles.dayControlButton, styles.endDayButton]} onPress={withInteractionFeedback(endDay)}>
                 <Text style={styles.dayControlButtonText}>{t.endDay}</Text>
               </Pressable>
             </View>
@@ -1144,12 +1225,12 @@ export default function App() {
             {!!currentTask.notes && <Text style={styles.entryNotes}>{currentTask.notes}</Text>}
             <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(currentTask, nowTick))}</Text>
             <View style={styles.taskActionRow}>
-              <Pressable onPress={() => (currentTask.trackingStartedAt ? pauseTaskTimer(currentTask.id) : startTaskTimer(currentTask.id))}>
+              <Pressable onPress={withInteractionFeedback(() => (currentTask.trackingStartedAt ? pauseTaskTimer(currentTask.id) : startTaskTimer(currentTask.id)))}>
                 <Text style={styles.markDoneText}>
                   {currentTask.trackingStartedAt ? t.pauseTask : currentTask.trackedMs > 0 ? t.resumeTask : t.startTask}
                 </Text>
               </Pressable>
-              <Pressable onPress={() => markDone(currentTask.id)}>
+              <Pressable onPress={withInteractionFeedback(() => markDone(currentTask.id))}>
                 <Text style={styles.markDoneText}>{t.complete}</Text>
               </Pressable>
             </View>
@@ -1165,7 +1246,7 @@ export default function App() {
           <>
             <Text style={styles.entryTask}>{nextTask.date} {nextTask.time}</Text>
             <Text style={styles.entryNotes}>{nextTask.task}</Text>
-            <Pressable style={styles.primaryButton} onPress={() => startTaskNow(nextTask.id)}>
+            <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(() => startTaskNow(nextTask.id))}>
               <Text style={styles.buttonText}>{t.startNow}</Text>
             </Pressable>
           </>
@@ -1178,14 +1259,14 @@ export default function App() {
         <View style={styles.monthHeaderRow}>
           <Pressable
             style={styles.monthNavButton}
-            onPress={() => setDisplayedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+            onPress={withInteractionFeedback(() => setDisplayedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)))}
           >
             <Text style={styles.monthNavText}>{'<'}</Text>
           </Pressable>
           <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{monthLabel}</Text>
           <Pressable
             style={styles.monthNavButton}
-            onPress={() => setDisplayedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+            onPress={withInteractionFeedback(() => setDisplayedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)))}
           >
             <Text style={styles.monthNavText}>{'>'}</Text>
           </Pressable>
@@ -1202,7 +1283,9 @@ export default function App() {
               <Pressable
                 key={`${cell.date}-${cell.day}`}
                 onPress={() => {
-                  void selectDate(cell.date);
+                  triggerTapSound();
+                  triggerTapHaptic();
+                  void selectDate(cell.date, false);
                 }}
                 style={[styles.dayCell, !cell.inMonth && styles.dayCellMuted]}
               >
@@ -1241,7 +1324,9 @@ export default function App() {
                   <Pressable
                     style={[styles.dateWheelItem, selected && styles.dateWheelItemSelected]}
                     onPress={() => {
-                      void selectDate(item);
+                      triggerTapSound();
+                      triggerTapHaptic();
+                      void selectDate(item, false);
                     }}
                   >
                     <Text style={[styles.dateWheelText, selected && styles.dateWheelTextSelected]}>
@@ -1272,7 +1357,9 @@ export default function App() {
                   <Pressable
                     style={[styles.timeWheelItem, selected && styles.timeWheelItemSelected]}
                     onPress={() => {
-                      void selectTime(item);
+                      triggerTapSound();
+                      triggerTapHaptic();
+                      void selectTime(item, false);
                     }}
                   >
                     <Text style={[styles.timeWheelText, selected && styles.timeWheelTextSelected]}>{item}</Text>
@@ -1296,7 +1383,7 @@ export default function App() {
           placeholder={t.notesPlaceholder}
           multiline
         />
-        <Pressable style={styles.primaryButton} onPress={addTask}>
+        <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(addTask)}>
           <Text style={styles.buttonText}>{t.addTaskButton}</Text>
         </Pressable>
       </View>
@@ -1320,15 +1407,15 @@ export default function App() {
               {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
               <View style={styles.taskActionRow}>
-                <Pressable onPress={() => (item.trackingStartedAt ? pauseTaskTimer(item.id) : startTaskTimer(item.id))}>
+                <Pressable onPress={withInteractionFeedback(() => (item.trackingStartedAt ? pauseTaskTimer(item.id) : startTaskTimer(item.id)))}>
                   <Text style={styles.markDoneText}>
                     {item.trackingStartedAt ? t.pauseTask : item.trackedMs > 0 ? t.resumeTask : t.startTask}
                   </Text>
                 </Pressable>
-                <Pressable onPress={() => toggleDone(item.id)}>
+                <Pressable onPress={withInteractionFeedback(() => toggleDone(item.id))}>
                   <Text style={styles.markDoneText}>{item.completed ? t.pending : t.complete}</Text>
                 </Pressable>
-                <Pressable onPress={() => removeTask(item.id)}>
+                <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
                   <Text style={styles.deleteText}>{t.delete}</Text>
                 </Pressable>
               </View>
@@ -1338,7 +1425,7 @@ export default function App() {
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Pressable style={styles.secondaryButton} onPress={() => setShowGeneralTasks((prev) => !prev)}>
+        <Pressable style={styles.secondaryButton} onPress={withInteractionFeedback(() => setShowGeneralTasks((prev) => !prev))}>
           <Text style={styles.secondaryButtonText}>{t.generalTasks}</Text>
         </Pressable>
         {showGeneralTasks && (
@@ -1400,7 +1487,7 @@ export default function App() {
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.menuReport}</Text>
-        <Pressable style={styles.secondaryButton} onPress={exportCsv}>
+        <Pressable style={styles.secondaryButton} onPress={withInteractionFeedback(exportCsv)}>
           <Text style={styles.secondaryButtonText}>{t.exportCsv}</Text>
         </Pressable>
       </View>
@@ -1461,7 +1548,7 @@ export default function App() {
           {(['uk', 'en', 'ro'] as Language[]).map((lang) => (
             <Pressable
               key={lang}
-              onPress={() => setLanguage(lang)}
+              onPress={withInteractionFeedback(() => setLanguage(lang))}
               style={[styles.languageButton, language === lang && styles.languageButtonActive]}
             >
               <Text style={[styles.languageButtonText, language === lang && styles.languageButtonTextActive]}>
@@ -1477,7 +1564,7 @@ export default function App() {
           {(['light', 'dark', 'colorful'] as ThemeMode[]).map((mode) => (
             <Pressable
               key={mode}
-              onPress={() => setThemeMode(mode)}
+              onPress={withInteractionFeedback(() => setThemeMode(mode))}
               style={[styles.languageButton, themeMode === mode && styles.languageButtonActive]}
             >
               <Text style={[styles.languageButtonText, themeMode === mode && styles.languageButtonTextActive]}>
@@ -1485,6 +1572,48 @@ export default function App() {
               </Text>
             </Pressable>
           ))}
+        </View>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.sound}</Text>
+        <View style={styles.languageButtons}>
+          <Pressable
+            onPress={withInteractionFeedback(() => setSoundEnabled(true))}
+            style={[styles.languageButton, soundEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, soundEnabled && styles.languageButtonTextActive]}>
+              {t.on}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={withInteractionFeedback(() => setSoundEnabled(false))}
+            style={[styles.languageButton, !soundEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, !soundEnabled && styles.languageButtonTextActive]}>
+              {t.off}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.haptics}</Text>
+        <View style={styles.languageButtons}>
+          <Pressable
+            onPress={withInteractionFeedback(() => setHapticsEnabled(true))}
+            style={[styles.languageButton, hapticsEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, hapticsEnabled && styles.languageButtonTextActive]}>
+              {t.on}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={withInteractionFeedback(() => setHapticsEnabled(false))}
+            style={[styles.languageButton, !hapticsEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, !hapticsEnabled && styles.languageButtonTextActive]}>
+              {t.off}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </>
@@ -1504,7 +1633,7 @@ export default function App() {
             return (
               <Pressable
                 key={tab.key}
-                onPress={() => setScreen(tab.key)}
+                onPress={withInteractionFeedback(() => setScreen(tab.key))}
                 style={[styles.tabItem, active && styles.tabItemActive, active && { backgroundColor: c.tabActiveBg }]}
               >
                 <View style={[styles.tabIconWrap, active && styles.tabIconWrapActive]}>
