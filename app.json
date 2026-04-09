@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "work-report-ios",
+    "name": "DayFlow",
     "slug": "work-report-ios",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -24,8 +24,8 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "name": "Work Report",
-      "shortName": "WorkReport",
+      "name": "DayFlow",
+      "shortName": "DayFlow",
       "lang": "uk",
       "favicon": "./assets/favicon.png",
       "bundler": "metro"

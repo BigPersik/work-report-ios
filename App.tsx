@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -39,12 +41,10 @@ type NewTask = {
 };
 
 type Language = 'uk' | 'en' | 'ro';
-type Screen = 'menu' | 'calendar' | 'report' | 'settings';
-type BreakReason = 'lunch' | 'smoke' | 'other';
+type Screen = 'calendar' | 'report' | 'settings';
 
 type BreakEntry = {
   id: string;
-  reason: BreakReason;
   startedAt: string;
   endedAt?: string;
 };
@@ -59,7 +59,13 @@ type WorkDayState = {
 const STORAGE_KEY = 'work-report-entries-v1';
 const LANGUAGE_KEY = 'work-report-language-v1';
 const WORKDAY_KEY = 'work-report-workday-v1';
-const today = new Date().toISOString().slice(0, 10);
+const formatLocalDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+const today = formatLocalDate(new Date());
 
 const translations: Record<
   Language,
@@ -78,15 +84,13 @@ const translations: Record<
     endDay: string;
     pauseDay: string;
     resumeDay: string;
-    pauseReason: string;
-    breakLunch: string;
-    breakSmoke: string;
-    breakOther: string;
     workTime: string;
     breakTime: string;
     netTime: string;
     dayNotStarted: string;
     dayFinished: string;
+    nextTask: string;
+    noNextTask: string;
     currentTask: string;
     noCurrentTask: string;
     complete: string;
@@ -94,6 +98,7 @@ const translations: Record<
     pending: string;
     calendarTitle: string;
     selectDay: string;
+    openDatePicker: string;
     addTask: string;
     timePlaceholder: string;
     projectPlaceholder: string;
@@ -105,6 +110,8 @@ const translations: Record<
     resumeTask: string;
     taskTime: string;
     exportCsv: string;
+    generalTasks: string;
+    noGeneralTasks: string;
     tasksForDay: string;
     noTasksForDay: string;
     allTasks: string;
@@ -129,29 +136,27 @@ const translations: Record<
   }
 > = {
   uk: {
-    title: 'Work Report iOS',
+    title: 'DayFlow',
     subtitle: 'Планувальник задач по днях',
-    menuTitle: 'Головне меню',
-    menuSubtitle: 'Оберіть розділ',
-    menuCalendar: '1. Календар',
-    menuReport: '2. Звіт',
-    menuSettings: '3. Налаштування',
-    backToMenu: 'Назад у меню',
+    menuTitle: 'Розділи',
+    menuSubtitle: 'Навігація',
+    menuCalendar: 'Календар',
+    menuReport: 'Звіт',
+    menuSettings: 'Налаштування',
+    backToMenu: 'Назад',
     language: 'Мова',
     workDay: 'Робочий день',
     startDay: 'Розпочати день',
     endDay: 'Завершити день',
     pauseDay: 'Пауза',
     resumeDay: 'Продовжити',
-    pauseReason: 'Причина паузи',
-    breakLunch: 'Обід',
-    breakSmoke: 'Перекур',
-    breakOther: 'Інше',
     workTime: 'Відпрацьовано',
     breakTime: 'Перерви',
     netTime: 'Чистий час',
     dayNotStarted: 'Робочий день ще не розпочато.',
     dayFinished: 'Робочий день завершено.',
+    nextTask: 'Наступна задача',
+    noNextTask: 'Наступних задач немає.',
     currentTask: 'Поточне завдання',
     noCurrentTask: 'Наразі немає активних задач.',
     complete: 'Завершити',
@@ -159,6 +164,7 @@ const translations: Record<
     pending: 'В процесі',
     calendarTitle: 'Календар',
     selectDay: 'Обраний день',
+    openDatePicker: 'Обрати дату',
     addTask: 'Додати завдання',
     timePlaceholder: 'Час (HH:mm)',
     projectPlaceholder: 'Проєкт',
@@ -170,6 +176,8 @@ const translations: Record<
     resumeTask: 'Продовжити',
     taskTime: 'Час задачі',
     exportCsv: 'Експорт CSV',
+    generalTasks: 'Загальні задачі',
+    noGeneralTasks: 'Немає запланованих незавершених задач.',
     tasksForDay: 'Задачі за день',
     noTasksForDay: 'Ще немає задач на цей день.',
     allTasks: 'Усі задачі',
@@ -193,29 +201,27 @@ const translations: Record<
     csvHeader: 'Дата,Час,Проєкт,Задача,Коментар,Статус,Час задачі',
   },
   en: {
-    title: 'Work Report iOS',
+    title: 'DayFlow',
     subtitle: 'Daily task planner',
-    menuTitle: 'Main Menu',
-    menuSubtitle: 'Choose a section',
-    menuCalendar: '1. Calendar',
-    menuReport: '2. Report',
-    menuSettings: '3. Settings',
-    backToMenu: 'Back to menu',
+    menuTitle: 'Sections',
+    menuSubtitle: 'Navigation',
+    menuCalendar: 'Calendar',
+    menuReport: 'Report',
+    menuSettings: 'Settings',
+    backToMenu: 'Back',
     language: 'Language',
     workDay: 'Work day',
     startDay: 'Start day',
     endDay: 'End day',
     pauseDay: 'Pause',
     resumeDay: 'Resume',
-    pauseReason: 'Pause reason',
-    breakLunch: 'Lunch',
-    breakSmoke: 'Smoke',
-    breakOther: 'Other',
     workTime: 'Worked',
     breakTime: 'Breaks',
     netTime: 'Net time',
     dayNotStarted: 'Work day has not started yet.',
     dayFinished: 'Work day is finished.',
+    nextTask: 'Next task',
+    noNextTask: 'No upcoming tasks.',
     currentTask: 'Current task',
     noCurrentTask: 'No active tasks right now.',
     complete: 'Complete',
@@ -223,6 +229,7 @@ const translations: Record<
     pending: 'Pending',
     calendarTitle: 'Calendar',
     selectDay: 'Selected day',
+    openDatePicker: 'Pick date',
     addTask: 'Add task',
     timePlaceholder: 'Time (HH:mm)',
     projectPlaceholder: 'Project',
@@ -234,6 +241,8 @@ const translations: Record<
     resumeTask: 'Resume',
     taskTime: 'Task time',
     exportCsv: 'Export CSV',
+    generalTasks: 'General tasks',
+    noGeneralTasks: 'No scheduled unfinished tasks.',
     tasksForDay: 'Tasks for day',
     noTasksForDay: 'No tasks for this day yet.',
     allTasks: 'All tasks',
@@ -257,29 +266,27 @@ const translations: Record<
     csvHeader: 'Date,Time,Project,Task,Notes,Status,Task Time',
   },
   ro: {
-    title: 'Work Report iOS',
+    title: 'DayFlow',
     subtitle: 'Planificator zilnic de sarcini',
-    menuTitle: 'Meniu Principal',
-    menuSubtitle: 'Alege o secțiune',
-    menuCalendar: '1. Calendar',
-    menuReport: '2. Raport',
-    menuSettings: '3. Setări',
-    backToMenu: 'Înapoi la meniu',
+    menuTitle: 'Secțiuni',
+    menuSubtitle: 'Navigare',
+    menuCalendar: 'Calendar',
+    menuReport: 'Raport',
+    menuSettings: 'Setări',
+    backToMenu: 'Înapoi',
     language: 'Limbă',
     workDay: 'Zi de lucru',
     startDay: 'Începe ziua',
     endDay: 'Termină ziua',
     pauseDay: 'Pauză',
     resumeDay: 'Reia',
-    pauseReason: 'Motiv pauză',
-    breakLunch: 'Prânz',
-    breakSmoke: 'Fumat',
-    breakOther: 'Altceva',
     workTime: 'Timp lucrat',
     breakTime: 'Pauze',
     netTime: 'Timp net',
     dayNotStarted: 'Ziua de lucru nu a început încă.',
     dayFinished: 'Ziua de lucru este finalizată.',
+    nextTask: 'Următoarea sarcină',
+    noNextTask: 'Nu există sarcini următoare.',
     currentTask: 'Sarcina curentă',
     noCurrentTask: 'Nu există sarcini active acum.',
     complete: 'Finalizează',
@@ -287,6 +294,7 @@ const translations: Record<
     pending: 'În lucru',
     calendarTitle: 'Calendar',
     selectDay: 'Zi selectată',
+    openDatePicker: 'Alege data',
     addTask: 'Adaugă sarcină',
     timePlaceholder: 'Ora (HH:mm)',
     projectPlaceholder: 'Proiect',
@@ -298,6 +306,8 @@ const translations: Record<
     resumeTask: 'Reia',
     taskTime: 'Timp sarcină',
     exportCsv: 'Exportă CSV',
+    generalTasks: 'Sarcini generale',
+    noGeneralTasks: 'Nu există sarcini planificate nefinalizate.',
     tasksForDay: 'Sarcini pe zi',
     noTasksForDay: 'Nu există încă sarcini pentru această zi.',
     allTasks: 'Toate sarcinile',
@@ -340,12 +350,15 @@ export default function App() {
   const [entries, setEntries] = useState<TaskEntry[]>([]);
   const [form, setForm] = useState<NewTask>(INITIAL_FORM);
   const [language, setLanguage] = useState<Language>('uk');
-  const [screen, setScreen] = useState<Screen>('menu');
+  const [screen, setScreen] = useState<Screen>('calendar');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
+  const [showGeneralTasks, setShowGeneralTasks] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
   const t = translations[language];
   const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
+  const dateWheelRef = useRef<FlatList<string>>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
@@ -423,6 +436,12 @@ export default function App() {
       .filter((item) => !item.completed && parseDateTime(item) <= now)
       .sort((a, b) => parseDateTime(a).getTime() - parseDateTime(b).getTime())[0];
   }, [entries, nowTick]);
+  const nextTask = useMemo(() => {
+    const now = new Date(nowTick);
+    return entries
+      .filter((item) => !item.completed && parseDateTime(item) > now)
+      .sort((a, b) => parseDateTime(a).getTime() - parseDateTime(b).getTime())[0];
+  }, [entries, nowTick]);
 
   const monthCells = useMemo(() => {
     const base = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth(), 1);
@@ -432,16 +451,16 @@ export default function App() {
     for (let i = 0; i < startDay; i += 1) {
       const d = new Date(base);
       d.setDate(d.getDate() - (startDay - i));
-      cells.push({ date: d.toISOString().slice(0, 10), day: d.getDate(), inMonth: false });
+      cells.push({ date: formatLocalDate(d), day: d.getDate(), inMonth: false });
     }
     for (let d = 1; d <= daysInMonth; d += 1) {
-      const date = new Date(base.getFullYear(), base.getMonth(), d).toISOString().slice(0, 10);
+      const date = formatLocalDate(new Date(base.getFullYear(), base.getMonth(), d));
       cells.push({ date, day: d, inMonth: true });
     }
     while (cells.length % 7 !== 0) {
       const last = new Date(cells[cells.length - 1].date);
       last.setDate(last.getDate() + 1);
-      cells.push({ date: last.toISOString().slice(0, 10), day: last.getDate(), inMonth: false });
+      cells.push({ date: formatLocalDate(last), day: last.getDate(), inMonth: false });
     }
     return cells;
   }, [displayedMonth]);
@@ -458,9 +477,54 @@ export default function App() {
         ? ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du']
         : ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
+  const dateOptions = useMemo(() => {
+    const base = new Date();
+    const list: string[] = [];
+    for (let i = -30; i <= 180; i += 1) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      list.push(formatLocalDate(d));
+    }
+    return list;
+  }, []);
+
+  const selectedDateIndex = Math.max(0, dateOptions.indexOf(form.date));
+
+  const formatReadableDate = (value: string) => {
+    const date = new Date(`${value}T00:00:00`);
+    return date.toLocaleDateString(language === 'uk' ? 'uk-UA' : language === 'ro' ? 'ro-RO' : 'en-US', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
   const updateField = (field: keyof NewTask, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const selectDate = async (value: string) => {
+    setForm((prev) => ({ ...prev, date: value }));
+    const selected = new Date(`${value}T00:00:00`);
+    setDisplayedMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+    if (Platform.OS !== 'web') {
+      await Haptics.selectionAsync();
+    }
+  };
+
+  useEffect(() => {
+    if (!showDatePicker || !dateWheelRef.current) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      dateWheelRef.current?.scrollToIndex({
+        index: selectedDateIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    });
+  }, [selectedDateIndex, showDatePicker]);
 
   const addTask = () => {
     const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(form.time);
@@ -625,16 +689,39 @@ export default function App() {
   const tasksForDay = entries
     .filter((item) => item.date === form.date)
     .sort((a, b) => a.time.localeCompare(b.time));
+  const generalPendingTasks = [...entries]
+    .filter((item) => !item.completed)
+    .sort((a, b) => {
+      const byDate = a.date.localeCompare(b.date);
+      return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
+    });
   const allTasks = [...entries].sort((a, b) => {
     const byDate = b.date.localeCompare(a.date);
     return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
   });
   const hasTasksOnDay = (date: string) => entries.some((item) => item.date === date);
-  const reasonLabel = (reason: BreakReason) =>
-    reason === 'lunch' ? t.breakLunch : reason === 'smoke' ? t.breakSmoke : t.breakOther;
 
   const activeBreak = workDay.breaks.find((item) => !item.endedAt);
   const isDayRunning = Boolean(workDay.startedAt) && !workDay.endedAt;
+  const dayStatusLabel = !workDay.startedAt
+    ? language === 'uk'
+      ? 'Не розпочато'
+      : language === 'ro'
+        ? 'Neinceput'
+        : 'Not started'
+    : workDay.endedAt
+      ? language === 'uk'
+        ? 'Завершено'
+        : language === 'ro'
+          ? 'Finalizat'
+          : 'Finished'
+      : activeBreak
+        ? t.pauseDay
+        : language === 'uk'
+          ? 'В роботі'
+          : language === 'ro'
+            ? 'Activ'
+            : 'Running';
 
   const formatDuration = (ms: number) => {
     const safeMs = Math.max(0, ms);
@@ -677,7 +764,7 @@ export default function App() {
     );
   };
 
-  const startBreak = (reason: BreakReason) => {
+  const startPause = () => {
     if (!isDayRunning || activeBreak) {
       return;
     }
@@ -689,7 +776,6 @@ export default function App() {
         ...prev.breaks,
         {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          reason,
           startedAt: nowIso,
         },
       ],
@@ -747,38 +833,29 @@ export default function App() {
     [entries, nowTick],
   );
 
-  const renderMenu = () => (
-    <View style={styles.menuContainer}>
-      <Text style={styles.title}>{t.title}</Text>
-      <Text style={styles.subtitle}>{t.subtitle}</Text>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.menuTitle}</Text>
-        <Text style={styles.menuSubtitle}>{t.menuSubtitle}</Text>
-        <Pressable style={styles.menuButton} onPress={() => setScreen('calendar')}>
-          <Text style={styles.menuButtonText}>{t.menuCalendar}</Text>
-        </Pressable>
-        <Pressable style={styles.menuButton} onPress={() => setScreen('report')}>
-          <Text style={styles.menuButtonText}>{t.menuReport}</Text>
-        </Pressable>
-        <Pressable style={styles.menuButton} onPress={() => setScreen('settings')}>
-          <Text style={styles.menuButtonText}>{t.menuSettings}</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-
   const renderCalendar = () => (
     <>
-      <View style={styles.topNavRow}>
-        <Pressable style={styles.backButton} onPress={() => setScreen('menu')}>
-          <Text style={styles.backButtonText}>{t.backToMenu}</Text>
-        </Pressable>
-      </View>
       <Text style={styles.title}>{t.calendarTitle}</Text>
       <Text style={styles.subtitle}>{t.subtitle}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.workDay}</Text>
+        <View style={styles.workdayHeaderRow}>
+          <Text style={styles.cardTitle}>{t.workDay}</Text>
+          <View
+            style={[
+              styles.statusBadge,
+              !workDay.startedAt
+                ? styles.statusIdle
+                : workDay.endedAt
+                  ? styles.statusEnded
+                  : activeBreak
+                    ? styles.statusPaused
+                    : styles.statusRunning,
+            ]}
+          >
+            <Text style={styles.statusBadgeText}>{dayStatusLabel}</Text>
+          </View>
+        </View>
         {!workDay.startedAt && <Text style={styles.emptyText}>{t.dayNotStarted}</Text>}
         {!!workDay.startedAt && !!workDay.endedAt && <Text style={styles.emptyText}>{t.dayFinished}</Text>}
         <View style={styles.summaryRow}>
@@ -802,28 +879,17 @@ export default function App() {
         )}
         {isDayRunning && (
           <>
-            <View style={styles.actionsRow}>
-              <Pressable style={styles.secondaryButton} onPress={() => startBreak('lunch')}>
-                <Text style={styles.secondaryButtonText}>{t.breakLunch}</Text>
+            <View style={styles.dayControlRow}>
+              <Pressable
+                style={[styles.dayControlButton, styles.pauseButton]}
+                onPress={activeBreak ? resumeDay : startPause}
+              >
+                <Text style={styles.dayControlButtonText}>{activeBreak ? t.resumeDay : t.pauseDay}</Text>
               </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={() => startBreak('smoke')}>
-                <Text style={styles.secondaryButtonText}>{t.breakSmoke}</Text>
-              </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={() => startBreak('other')}>
-                <Text style={styles.secondaryButtonText}>{t.breakOther}</Text>
+              <Pressable style={[styles.dayControlButton, styles.endDayButton]} onPress={endDay}>
+                <Text style={styles.dayControlButtonText}>{t.endDay}</Text>
               </Pressable>
             </View>
-            {!!activeBreak && (
-              <View style={styles.activeBreakRow}>
-                <Text style={styles.entryNotes}>{t.pauseReason}: {reasonLabel(activeBreak.reason)}</Text>
-                <Pressable onPress={resumeDay}>
-                  <Text style={styles.markDoneText}>{t.resumeDay}</Text>
-                </Pressable>
-              </View>
-            )}
-            <Pressable style={styles.primaryButton} onPress={endDay}>
-              <Text style={styles.buttonText}>{t.endDay}</Text>
-            </Pressable>
           </>
         )}
       </View>
@@ -854,6 +920,19 @@ export default function App() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t.nextTask}</Text>
+        {nextTask ? (
+          <>
+            <Text style={styles.entryTask}>{nextTask.date} {nextTask.time}</Text>
+            <Text style={styles.entryProject}>{nextTask.project || '-'}</Text>
+            <Text style={styles.entryNotes}>{nextTask.task}</Text>
+          </>
+        ) : (
+          <Text style={styles.emptyText}>{t.noNextTask}</Text>
+        )}
+      </View>
+
+      <View style={styles.card}>
         <View style={styles.monthHeaderRow}>
           <Pressable
             style={styles.monthNavButton}
@@ -880,7 +959,9 @@ export default function App() {
             return (
               <Pressable
                 key={`${cell.date}-${cell.day}`}
-                onPress={() => updateField('date', cell.date)}
+                onPress={() => {
+                  void selectDate(cell.date);
+                }}
                 style={[styles.dayCell, !cell.inMonth && styles.dayCellMuted, selected && styles.dayCellSelected]}
               >
                 <Text style={[styles.dayCellText, !cell.inMonth && styles.dayCellTextMuted, selected && styles.dayCellTextSelected]}>
@@ -895,7 +976,45 @@ export default function App() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{t.addTask}</Text>
-        <Text style={styles.menuSubtitle}>{t.selectDay}: {form.date}</Text>
+        <Text style={styles.menuSubtitle}>{t.selectDay}: {formatReadableDate(form.date)}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setShowDatePicker((prev) => !prev)}>
+          <Text style={styles.secondaryButtonText}>{t.openDatePicker}</Text>
+        </Pressable>
+        {showDatePicker && (
+          <View style={styles.dateWheelContainer}>
+            <FlatList
+              ref={dateWheelRef}
+              data={dateOptions}
+              keyExtractor={(item) => item}
+              getItemLayout={(_, index) => ({ length: 44, offset: 44 * index, index })}
+              showsVerticalScrollIndicator={false}
+              snapToInterval={44}
+              decelerationRate="fast"
+              onMomentumScrollEnd={(event) => {
+                const index = Math.round(event.nativeEvent.contentOffset.y / 44);
+                const target = dateOptions[Math.max(0, Math.min(dateOptions.length - 1, index))];
+                if (target) {
+                  void selectDate(target);
+                }
+              }}
+              renderItem={({ item }) => {
+                const selected = item === form.date;
+                return (
+                  <Pressable
+                    style={[styles.dateWheelItem, selected && styles.dateWheelItemSelected]}
+                    onPress={() => {
+                      void selectDate(item);
+                    }}
+                  >
+                    <Text style={[styles.dateWheelText, selected && styles.dateWheelTextSelected]}>
+                      {formatReadableDate(item)}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        )}
         <TextInput
           style={styles.input}
           value={form.time}
@@ -961,16 +1080,32 @@ export default function App() {
           )}
         />
       </View>
+
+      <View style={styles.card}>
+        <Pressable style={styles.secondaryButton} onPress={() => setShowGeneralTasks((prev) => !prev)}>
+          <Text style={styles.secondaryButtonText}>{t.generalTasks}</Text>
+        </Pressable>
+        {showGeneralTasks && (
+          <FlatList
+            data={generalPendingTasks}
+            keyExtractor={(item) => `general-${item.id}`}
+            scrollEnabled={false}
+            style={styles.generalList}
+            ListEmptyComponent={<Text style={styles.emptyText}>{t.noGeneralTasks}</Text>}
+            renderItem={({ item }) => (
+              <View style={styles.entryCard}>
+                <Text style={styles.entryTask}>{item.date} {item.time} • {item.project || '-'}</Text>
+                <Text style={styles.entryNotes}>{item.task}</Text>
+              </View>
+            )}
+          />
+        )}
+      </View>
     </>
   );
 
   const renderReport = () => (
     <>
-      <View style={styles.topNavRow}>
-        <Pressable style={styles.backButton} onPress={() => setScreen('menu')}>
-          <Text style={styles.backButtonText}>{t.backToMenu}</Text>
-        </Pressable>
-      </View>
       <Text style={styles.title}>{t.menuReport}</Text>
       <Text style={styles.subtitle}>{t.subtitle}</Text>
 
@@ -1047,11 +1182,6 @@ export default function App() {
 
   const renderSettings = () => (
     <>
-      <View style={styles.topNavRow}>
-        <Pressable style={styles.backButton} onPress={() => setScreen('menu')}>
-          <Text style={styles.backButtonText}>{t.backToMenu}</Text>
-        </Pressable>
-      </View>
       <Text style={styles.title}>{t.menuSettings}</Text>
       <Text style={styles.subtitle}>{t.subtitle}</Text>
       <View style={styles.card}>
@@ -1073,16 +1203,47 @@ export default function App() {
     </>
   );
 
+  const renderTabBar = () => {
+    const tabs: Array<{ key: Screen; icon: keyof typeof Ionicons.glyphMap; label: string }> = [
+      { key: 'calendar', icon: 'calendar-outline', label: t.menuCalendar },
+      { key: 'report', icon: 'bar-chart-outline', label: t.menuReport },
+      { key: 'settings', icon: 'settings-outline', label: t.menuSettings },
+    ];
+    return (
+      <View style={styles.tabBarWrap}>
+        <View style={styles.tabBar}>
+          {tabs.map((tab) => {
+            const active = screen === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setScreen(tab.key)}
+                style={[styles.tabItem, active && styles.tabItemActive]}
+              >
+                <Ionicons
+                  name={tab.icon}
+                  size={20}
+                  color={active ? '#1d4ed8' : '#6c7389'}
+                />
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={styles.safeArea}>
         <StatusBar style="dark" />
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-          {screen === 'menu' && renderMenu()}
           {screen === 'calendar' && renderCalendar()}
           {screen === 'report' && renderReport()}
           {screen === 'settings' && renderSettings()}
         </ScrollView>
+        {renderTabBar()}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1091,11 +1252,11 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: '#eef3ff',
   },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 28,
+    paddingBottom: 104,
   },
   title: {
     fontSize: 28,
@@ -1104,8 +1265,8 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: 4,
-    marginBottom: 14,
-    color: '#5f6270',
+    marginBottom: 12,
+    color: '#606781',
     fontSize: 14,
   },
   menuContainer: {
@@ -1148,17 +1309,50 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e8e8ef',
+    borderColor: '#e4e9f7',
+    shadowColor: '#18233f',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
     color: '#15161a',
+  },
+  workdayHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusIdle: {
+    backgroundColor: '#edf2f7',
+  },
+  statusRunning: {
+    backgroundColor: '#dcfce7',
+  },
+  statusPaused: {
+    backgroundColor: '#fef3c7',
+  },
+  statusEnded: {
+    backgroundColor: '#fee2e2',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
   },
   input: {
     borderWidth: 1,
@@ -1199,18 +1393,65 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+  dateWheelContainer: {
+    marginTop: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#d7deef',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#f8faff',
+    maxHeight: 220,
+  },
+  dateWheelItem: {
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e8eefb',
+  },
+  dateWheelItemSelected: {
+    backgroundColor: '#e8f0ff',
+  },
+  dateWheelText: {
+    color: '#2c3650',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dateWheelTextSelected: {
+    color: '#1e40af',
+    fontWeight: '700',
+  },
+  generalList: {
+    marginTop: 10,
+  },
   actionsRow: {
     flexDirection: 'row',
     gap: 8,
     marginTop: 8,
     marginBottom: 8,
   },
-  activeBreakRow: {
-    marginTop: 6,
-    marginBottom: 8,
+  dayControlRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 8,
+  },
+  dayControlButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
+  },
+  pauseButton: {
+    backgroundColor: '#1d4ed8',
+  },
+  endDayButton: {
+    backgroundColor: '#dc2626',
+  },
+  dayControlButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   languageButtons: {
     flexDirection: 'row',
@@ -1386,5 +1627,47 @@ const styles = StyleSheet.create({
   },
   completedText: {
     color: '#0f766e',
+  },
+  tabBarWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dbe3f7',
+    borderRadius: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    gap: 8,
+    shadowColor: '#1a2b55',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  tabItem: {
+    flex: 1,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  tabItemActive: {
+    backgroundColor: '#eaf1ff',
+  },
+  tabLabel: {
+    marginTop: 4,
+    color: '#6c7389',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  tabLabelActive: {
+    color: '#1d4ed8',
   },
 });
