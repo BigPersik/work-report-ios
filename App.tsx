@@ -390,6 +390,9 @@ const getTaskTrackedMs = (entry: TaskEntry, nowMs: number) => {
   return Math.max(0, entry.trackedMs + live);
 };
 const WHEEL_ITEM_HEIGHT = 40;
+const WHEEL_VISIBLE_ROWS = 5;
+const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ROWS;
+const WHEEL_CENTER_OFFSET = (WHEEL_CONTAINER_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
 const CLICK_SOUND_URI =
   'data:audio/wav;base64,UklGRjwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YRgAAAAAABkAMgBKAGAAdABmAE8AOQAjAAwAAAAA8f/k/9f/yv/N/9f/6f8AAP//';
 
@@ -2082,7 +2085,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#f9fbff',
-    height: 200,
+    height: WHEEL_CONTAINER_HEIGHT,
   },
   pickerRow: {
     flexDirection: 'row',
@@ -2095,13 +2098,13 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   wheelContent: {
-    paddingVertical: WHEEL_ITEM_HEIGHT * 2,
+    paddingVertical: WHEEL_CENTER_OFFSET,
   },
   wheelCenterBand: {
     position: 'absolute',
     left: 8,
     right: 8,
-    top: WHEEL_ITEM_HEIGHT * 2,
+    top: WHEEL_CENTER_OFFSET,
     height: WHEEL_ITEM_HEIGHT,
     borderRadius: 9,
     borderWidth: 1,
@@ -2134,7 +2137,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#f9fbff',
     overflow: 'hidden',
-    height: 200,
+    height: WHEEL_CONTAINER_HEIGHT,
   },
   timeWheelItem: {
     height: WHEEL_ITEM_HEIGHT,
