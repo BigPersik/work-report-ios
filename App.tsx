@@ -949,7 +949,9 @@ export default function App() {
   useEffect(() => {
     lastDateIndexRef.current = selectedDateIndex;
     lastDateHapticIndexRef.current = selectedDateIndex;
-  }, [selectedDateIndex]);
+    const selected = new Date(`${form.date}T00:00:00`);
+    setDisplayedMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+  }, [form.date, selectedDateIndex]);
 
   useEffect(() => {
     lastTimeIndexRef.current = selectedTimeIndex;
@@ -970,7 +972,16 @@ export default function App() {
     lastDateHapticIndexRef.current = index;
     const target = dateOptions[index];
     if (target) {
-      void selectDate(target, true);
+      setForm((prev) => ({ ...prev, date: target }));
+      if (hapticsEnabled) {
+        if (Platform.OS === 'web') {
+          if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            navigator.vibrate(8);
+          }
+        } else {
+          void Haptics.selectionAsync();
+        }
+      }
     }
   };
 
@@ -983,7 +994,16 @@ export default function App() {
     lastTimeHapticIndexRef.current = index;
     const target = timeOptions[index];
     if (target) {
-      void selectTime(target, true);
+      setForm((prev) => ({ ...prev, time: target }));
+      if (hapticsEnabled) {
+        if (Platform.OS === 'web') {
+          if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            navigator.vibrate(8);
+          }
+        } else {
+          void Haptics.selectionAsync();
+        }
+      }
     }
   };
 
