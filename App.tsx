@@ -95,6 +95,9 @@ const translations: Record<
     sound: string;
     haptics: string;
     notifications: string;
+    appMode: string;
+    testNotification: string;
+    testNotificationBody: string;
     on: string;
     off: string;
     themeLight: string;
@@ -171,6 +174,9 @@ const translations: Record<
     sound: 'Звук',
     haptics: 'Вібрація',
     notifications: 'Сповіщення',
+    appMode: 'Режим',
+    testNotification: 'Тест сповіщення',
+    testNotificationBody: 'Перевірка сповіщення DayFlow',
     on: 'Увімк.',
     off: 'Вимк.',
     themeLight: 'Світла',
@@ -246,6 +252,9 @@ const translations: Record<
     sound: 'Sound',
     haptics: 'Haptics',
     notifications: 'Notifications',
+    appMode: 'Mode',
+    testNotification: 'Test notification',
+    testNotificationBody: 'DayFlow notification test',
     on: 'On',
     off: 'Off',
     themeLight: 'Light',
@@ -321,6 +330,9 @@ const translations: Record<
     sound: 'Sunet',
     haptics: 'Vibratie',
     notifications: 'Notificari',
+    appMode: 'Mod',
+    testNotification: 'Test notificare',
+    testNotificationBody: 'Test notificare DayFlow',
     on: 'Pornit',
     off: 'Oprit',
     themeLight: 'Luminoasă',
@@ -1258,6 +1270,37 @@ export default function App() {
     }
   };
 
+  const sendTestNotification = async () => {
+    if (!notificationsEnabled) {
+      Alert.alert(t.notifications, `${t.notifications}: ${t.off}`);
+      return;
+    }
+    if (Platform.OS === 'web') {
+      Alert.alert(t.notifications, t.testNotificationBody);
+      return;
+    }
+    const permission = await Notifications.getPermissionsAsync();
+    if (!permission.granted) {
+      const req = await Notifications.requestPermissionsAsync();
+      if (!req.granted) {
+        Alert.alert(t.error, t.notifications);
+        return;
+      }
+    }
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'DayFlow',
+        body: t.testNotificationBody,
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 1,
+        repeats: false,
+      },
+    });
+  };
+
   const removeTask = (id: string) => {
     setEntries((prev) => prev.filter((item) => item.id !== id));
   };
@@ -2183,6 +2226,9 @@ export default function App() {
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.notifications}</Text>
+        <Text style={styles.entryNotes}>
+          {t.appMode}: {Platform.OS === 'web' ? 'PWA' : 'Native'}
+        </Text>
         <View style={styles.languageButtons}>
           <Pressable
             onPress={withInteractionFeedback(() => setNotificationsEnabled(true))}
@@ -2201,6 +2247,9 @@ export default function App() {
             </Text>
           </Pressable>
         </View>
+        <Pressable style={[styles.secondaryButton, styles.testNotificationButton]} onPress={withInteractionFeedback(sendTestNotification)}>
+          <Text style={styles.secondaryButtonText}>{t.testNotification}</Text>
+        </Pressable>
       </View>
     </>
   );
@@ -2411,6 +2460,9 @@ const styles = StyleSheet.create({
     color: '#1e40af',
     fontWeight: '700',
     fontSize: 14,
+  },
+  testNotificationButton: {
+    marginTop: 10,
   },
   dateWheelContainer: {
     marginTop: 6,
