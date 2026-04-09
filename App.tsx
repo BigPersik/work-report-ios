@@ -637,6 +637,8 @@ export default function App() {
   const timeMagnetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
+  const commentModalOpacity = useRef(new Animated.Value(0)).current;
+  const commentModalTranslateY = useRef(new Animated.Value(12)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
   const ongoingTaskNotifIdRef = useRef<string | null>(null);
   const ongoingTaskNotifTaskIdRef = useRef<string | null>(null);
@@ -931,6 +933,25 @@ export default function App() {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (commentTaskId) {
+      commentModalOpacity.setValue(0);
+      commentModalTranslateY.setValue(12);
+      Animated.parallel([
+        Animated.timing(commentModalOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(commentModalTranslateY, {
+          toValue: 0,
+          duration: 240,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [commentModalOpacity, commentModalTranslateY, commentTaskId]);
 
   useEffect(() => {
     const load = async () => {
@@ -1452,8 +1473,25 @@ export default function App() {
         item.id === commentTaskId && item.completed ? { ...item, notes: commentDraft.trim() } : item,
       ),
     );
-    setCommentTaskId(null);
-    setCommentDraft('');
+    closeCommentModal();
+  };
+
+  const closeCommentModal = () => {
+    Animated.parallel([
+      Animated.timing(commentModalOpacity, {
+        toValue: 0,
+        duration: 170,
+        useNativeDriver: true,
+      }),
+      Animated.timing(commentModalTranslateY, {
+        toValue: 10,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCommentTaskId(null);
+      setCommentDraft('');
+    });
   };
 
   useEffect(() => {
@@ -2951,9 +2989,19 @@ export default function App() {
           {screen === 'report' && renderReport()}
           {screen === 'settings' && renderSettings()}
         </ScrollView>
-        <Modal transparent visible={Boolean(commentTaskId)} animationType="fade" onRequestClose={() => setCommentTaskId(null)}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Modal transparent visible={Boolean(commentTaskId)} animationType="none" onRequestClose={closeCommentModal}>
+          <Animated.View style={[styles.modalOverlay, { opacity: commentModalOpacity }]}>
+            <Animated.View
+              style={[
+                styles.modalCard,
+                {
+                  backgroundColor: c.cardBg,
+                  borderColor: c.cardBorder,
+                  opacity: commentModalOpacity,
+                  transform: [{ translateY: commentModalTranslateY }],
+                },
+              ]}
+            >
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.commentTitle}</Text>
               <TextInput
                 style={[styles.input, styles.notesInput]}
@@ -2966,10 +3014,7 @@ export default function App() {
               <View style={styles.actionsRow}>
                 <Pressable
                   style={[styles.secondaryButton, styles.actionButton]}
-                  onPress={withInteractionFeedback(() => {
-                    setCommentTaskId(null);
-                    setCommentDraft('');
-                  })}
+                  onPress={withInteractionFeedback(closeCommentModal)}
                 >
                   <Text style={styles.secondaryButtonText}>{t.commentCancel}</Text>
                 </Pressable>
@@ -2977,8 +3022,8 @@ export default function App() {
                   <Text style={styles.buttonText}>{t.commentSave}</Text>
                 </Pressable>
               </View>
-            </View>
-          </View>
+            </Animated.View>
+          </Animated.View>
         </Modal>
         {renderTabBar()}
       </KeyboardAvoidingView>
