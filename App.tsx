@@ -1912,6 +1912,7 @@ export default function App() {
       : priority === 'low'
         ? styles.priorityLow
         : styles.priorityMedium;
+  const getStatusStyle = (completed: boolean) => (completed ? styles.statusDoneChip : styles.statusInProgressChip);
   const priorityFilterOptions: PriorityFilter[] = ['all', 'low', 'medium', 'high'];
   const getPriorityFilterLabel = (filter: PriorityFilter) =>
     filter === 'all' ? t.priorityAll : getPriorityLabel(filter);
@@ -2660,7 +2661,10 @@ export default function App() {
               <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
-              <Text style={styles.entryNotes}>{item.task} ({item.completed ? t.completed : t.pending})</Text>
+              <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
+                <Text style={styles.priorityBadgeText}>{item.completed ? t.completed : t.pending}</Text>
+              </View>
+              <Text style={styles.entryNotes}>{item.task}</Text>
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
               {item.completed && (
                 <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
@@ -3231,6 +3235,12 @@ const styles = StyleSheet.create({
   },
   priorityHigh: {
     backgroundColor: '#DC2626',
+  },
+  statusDoneChip: {
+    backgroundColor: '#84CC16',
+  },
+  statusInProgressChip: {
+    backgroundColor: '#F59E0B',
   },
   dayControlRow: {
     flexDirection: 'row',
