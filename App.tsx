@@ -467,13 +467,80 @@ export default function App() {
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
-  const triggerTapHaptic = () => {
-    if (hapticsEnabled && Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const webAudioContextRef = useRef<AudioContext | null>(null);
+  const webAudioUnlockedRef = useRef(false);
+  const setWebMetaTag = (name: string, content: string) => {
+    if (Platform.OS !== 'web') {
+      return;
     }
+    const existing = document.querySelector(`meta[name="${name}"]`);
+    if (existing) {
+      existing.setAttribute('content', content);
+      return;
+    }
+    const tag = document.createElement('meta');
+    tag.setAttribute('name', name);
+    tag.setAttribute('content', content);
+    document.head.appendChild(tag);
+  };
+  const setWebAppleMetaTag = (name: string, content: string) => {
+    if (Platform.OS !== 'web') {
+      return;
+    }
+    const existing = document.querySelector(`meta[name="${name}"]`);
+    if (existing) {
+      existing.setAttribute('content', content);
+      return;
+    }
+    const tag = document.createElement('meta');
+    tag.setAttribute('name', name);
+    tag.setAttribute('content', content);
+    document.head.appendChild(tag);
+  };
+  const triggerTapHaptic = () => {
+    if (!hapticsEnabled) {
+      return;
+    }
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(12);
+      }
+      return;
+    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
   const triggerTapSound = () => {
     if (!soundEnabled) {
+      return;
+    }
+    if (Platform.OS === 'web') {
+      const Ctx = globalThis.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) {
+        return;
+      }
+      if (!webAudioContextRef.current) {
+        webAudioContextRef.current = new Ctx();
+      }
+      const ctx = webAudioContextRef.current;
+      if (!ctx) {
+        return;
+      }
+      if (ctx.state === 'suspended') {
+        void ctx.resume();
+      }
+      const now = ctx.currentTime;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(880, now);
+      oscillator.frequency.exponentialRampToValueAtTime(660, now + 0.025);
+      gain.gain.setValueAtTime(webAudioUnlockedRef.current ? 0.07 : 0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.045);
+      webAudioUnlockedRef.current = true;
       return;
     }
     const sound = clickSoundRef.current;
@@ -489,7 +556,28 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (Platform.OS !== 'web') {
+      return;
+    }
+    setWebMetaTag('theme-color', c.appBg);
+    setWebMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+    setWebAppleMetaTag('apple-mobile-web-app-capable', 'yes');
+    setWebAppleMetaTag('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    document.documentElement.style.backgroundColor = c.appBg;
+    document.body.style.backgroundColor = c.appBg;
+    document.body.style.margin = '0';
+  }, [c.appBg]);
+
+  useEffect(() => {
     let mounted = true;
+    if (Platform.OS === 'web') {
+      return () => {
+        if (webAudioContextRef.current) {
+          void webAudioContextRef.current.close();
+          webAudioContextRef.current = null;
+        }
+      };
+    }
     const prepareClickSound = async () => {
       try {
         const { sound } = await Audio.Sound.createAsync(
@@ -769,15 +857,27 @@ export default function App() {
     setForm((prev) => ({ ...prev, date: value }));
     const selected = new Date(`${value}T00:00:00`);
     setDisplayedMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
-    if (withHaptic && hapticsEnabled && Platform.OS !== 'web') {
-      await Haptics.selectionAsync();
+    if (withHaptic && hapticsEnabled) {
+      if (Platform.OS === 'web') {
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(8);
+        }
+      } else {
+        await Haptics.selectionAsync();
+      }
     }
   };
 
   const selectTime = async (value: string, withHaptic = true) => {
     setForm((prev) => ({ ...prev, time: value }));
-    if (withHaptic && hapticsEnabled && Platform.OS !== 'web') {
-      await Haptics.selectionAsync();
+    if (withHaptic && hapticsEnabled) {
+      if (Platform.OS === 'web') {
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(8);
+        }
+      } else {
+        await Haptics.selectionAsync();
+      }
     }
   };
 
@@ -789,9 +889,15 @@ export default function App() {
     lastTimeIndexRef.current = selectedTimeIndex;
   }, [selectedTimeIndex]);
 
-  const handleDateWheelScroll = (offsetY: number, shouldSnap = false) => {
+  const snapDateWheelToOffset = (offsetY: number) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
     const bounded = Math.max(0, Math.min(dateOptions.length - 1, index));
+    dateWheelRef.current?.scrollToIndex({ index: bounded, animated: true });
+    return bounded;
+  };
+
+  const handleDateWheelScroll = (offsetY: number, shouldSnap = false) => {
+    const bounded = shouldSnap ? snapDateWheelToOffset(offsetY) : Math.max(0, Math.min(dateOptions.length - 1, Math.round(offsetY / WHEEL_ITEM_HEIGHT)));
     if (bounded !== lastDateIndexRef.current) {
       lastDateIndexRef.current = bounded;
       const target = dateOptions[bounded];
@@ -799,28 +905,22 @@ export default function App() {
         void selectDate(target, true);
       }
     }
-    if (shouldSnap) {
-      const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
-      if (Math.abs(snappedOffset - offsetY) > 1) {
-        dateWheelRef.current?.scrollToOffset({ offset: snappedOffset, animated: true });
-      }
-    }
+  };
+
+  const snapTimeWheelToOffset = (offsetY: number) => {
+    const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
+    const bounded = Math.max(0, Math.min(timeOptions.length - 1, index));
+    timeWheelRef.current?.scrollToIndex({ index: bounded, animated: true });
+    return bounded;
   };
 
   const handleTimeWheelScroll = (offsetY: number, shouldSnap = false) => {
-    const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
-    const bounded = Math.max(0, Math.min(timeOptions.length - 1, index));
+    const bounded = shouldSnap ? snapTimeWheelToOffset(offsetY) : Math.max(0, Math.min(timeOptions.length - 1, Math.round(offsetY / WHEEL_ITEM_HEIGHT)));
     if (bounded !== lastTimeIndexRef.current) {
       lastTimeIndexRef.current = bounded;
       const target = timeOptions[bounded];
       if (target) {
         void selectTime(target, true);
-      }
-    }
-    if (shouldSnap) {
-      const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
-      if (Math.abs(snappedOffset - offsetY) > 1) {
-        timeWheelRef.current?.scrollToOffset({ offset: snappedOffset, animated: true });
       }
     }
   };
@@ -1328,12 +1428,18 @@ export default function App() {
               getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
               showsVerticalScrollIndicator={false}
               snapToInterval={WHEEL_ITEM_HEIGHT}
+              snapToAlignment="start"
               decelerationRate="fast"
+              bounces={false}
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
               onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
               onMomentumScrollEnd={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y, true)}
-              onScrollEndDrag={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y, true)}
+              onScrollEndDrag={(event) => {
+                setTimeout(() => {
+                  handleDateWheelScroll(event.nativeEvent.contentOffset.y, true);
+                }, 0);
+              }}
               renderItem={({ item }) => {
                 const selected = item === form.date;
                 return (
@@ -1363,12 +1469,18 @@ export default function App() {
               getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
               showsVerticalScrollIndicator={false}
               snapToInterval={WHEEL_ITEM_HEIGHT}
+              snapToAlignment="start"
               decelerationRate="fast"
+              bounces={false}
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
               onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
               onMomentumScrollEnd={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true)}
-              onScrollEndDrag={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true)}
+              onScrollEndDrag={(event) => {
+                setTimeout(() => {
+                  handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true);
+                }, 0);
+              }}
               renderItem={({ item }) => {
                 const selected = item === form.time;
                 return (
