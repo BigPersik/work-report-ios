@@ -1079,6 +1079,24 @@ export default function App() {
     timeMagnetTimerRef.current = setTimeout(applyTimeMagnet, 90);
   };
 
+  const applyDateMagnetFromOffset = (offsetY: number) => {
+    lastDateOffsetRef.current = offsetY;
+    if (dateMagnetTimerRef.current) {
+      clearTimeout(dateMagnetTimerRef.current);
+      dateMagnetTimerRef.current = null;
+    }
+    applyDateMagnet();
+  };
+
+  const applyTimeMagnetFromOffset = (offsetY: number) => {
+    lastTimeOffsetRef.current = offsetY;
+    if (timeMagnetTimerRef.current) {
+      clearTimeout(timeMagnetTimerRef.current);
+      timeMagnetTimerRef.current = null;
+    }
+    applyTimeMagnet();
+  };
+
   const addTask = () => {
     const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(form.time);
     if (!form.date || !form.task.trim() || !validTime) {
@@ -1658,8 +1676,14 @@ export default function App() {
                 contentContainerStyle={styles.wheelContent}
                 scrollEventThrottle={16}
                 onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
+                onMomentumScrollBegin={() => {
+                  if (dateMagnetTimerRef.current) {
+                    clearTimeout(dateMagnetTimerRef.current);
+                    dateMagnetTimerRef.current = null;
+                  }
+                }}
                 onScrollEndDrag={scheduleDateMagnet}
-                onMomentumScrollEnd={scheduleDateMagnet}
+                onMomentumScrollEnd={(event) => applyDateMagnetFromOffset(event.nativeEvent.contentOffset.y)}
                 onScrollToIndexFailed={(info) => {
                   dateWheelRef.current?.scrollToOffset({
                     offset: info.index * WHEEL_ITEM_HEIGHT,
@@ -1705,8 +1729,14 @@ export default function App() {
                 contentContainerStyle={styles.wheelContent}
                 scrollEventThrottle={16}
                 onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
+                onMomentumScrollBegin={() => {
+                  if (timeMagnetTimerRef.current) {
+                    clearTimeout(timeMagnetTimerRef.current);
+                    timeMagnetTimerRef.current = null;
+                  }
+                }}
                 onScrollEndDrag={scheduleTimeMagnet}
-                onMomentumScrollEnd={scheduleTimeMagnet}
+                onMomentumScrollEnd={(event) => applyTimeMagnetFromOffset(event.nativeEvent.contentOffset.y)}
                 onScrollToIndexFailed={(info) => {
                   timeWheelRef.current?.scrollToOffset({
                     offset: info.index * WHEEL_ITEM_HEIGHT,
