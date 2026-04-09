@@ -23,7 +23,6 @@ type TaskEntry = {
   id: string;
   date: string;
   time: string;
-  project: string;
   task: string;
   notes: string;
   completed: boolean;
@@ -35,14 +34,13 @@ type TaskEntry = {
 type NewTask = {
   date: string;
   time: string;
-  project: string;
   task: string;
   notes: string;
 };
 
 type Language = 'uk' | 'en' | 'ro';
 type Screen = 'calendar' | 'report' | 'settings';
-type ThemeMode = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'colorful';
 
 type BreakEntry = {
   id: string;
@@ -84,6 +82,7 @@ const translations: Record<
     theme: string;
     themeLight: string;
     themeDark: string;
+    themeColorful: string;
     workDay: string;
     startDay: string;
     endDay: string;
@@ -107,7 +106,6 @@ const translations: Record<
     openTimePicker: string;
     addTask: string;
     timePlaceholder: string;
-    projectPlaceholder: string;
     taskPlaceholder: string;
     notesPlaceholder: string;
     addTaskButton: string;
@@ -154,6 +152,7 @@ const translations: Record<
     theme: 'Тема',
     themeLight: 'Світла',
     themeDark: 'Темна',
+    themeColorful: 'Кольорова',
     workDay: 'Робочий день',
     startDay: 'Розпочати день',
     endDay: 'Завершити день',
@@ -177,7 +176,6 @@ const translations: Record<
     openTimePicker: 'Обрати час',
     addTask: 'Додати завдання',
     timePlaceholder: 'Час (HH:mm)',
-    projectPlaceholder: 'Проєкт',
     taskPlaceholder: 'Задача',
     notesPlaceholder: 'Коментар',
     addTaskButton: 'Додати задачу',
@@ -208,7 +206,7 @@ const translations: Record<
     done: 'Готово',
     fileSaved: 'Файл збережено',
     exportError: 'Не вдалося зробити експорт.',
-    csvHeader: 'Дата,Час,Проєкт,Задача,Коментар,Статус,Час задачі',
+    csvHeader: 'Дата,Час,Задача,Коментар,Статус,Час задачі',
   },
   en: {
     title: 'DayFlow',
@@ -223,6 +221,7 @@ const translations: Record<
     theme: 'Theme',
     themeLight: 'Light',
     themeDark: 'Dark',
+    themeColorful: 'Colorful',
     workDay: 'Work day',
     startDay: 'Start day',
     endDay: 'End day',
@@ -246,7 +245,6 @@ const translations: Record<
     openTimePicker: 'Pick time',
     addTask: 'Add task',
     timePlaceholder: 'Time (HH:mm)',
-    projectPlaceholder: 'Project',
     taskPlaceholder: 'Task',
     notesPlaceholder: 'Notes',
     addTaskButton: 'Add task',
@@ -277,7 +275,7 @@ const translations: Record<
     done: 'Done',
     fileSaved: 'File saved',
     exportError: 'Failed to export.',
-    csvHeader: 'Date,Time,Project,Task,Notes,Status,Task Time',
+    csvHeader: 'Date,Time,Task,Notes,Status,Task Time',
   },
   ro: {
     title: 'DayFlow',
@@ -292,6 +290,7 @@ const translations: Record<
     theme: 'Temă',
     themeLight: 'Luminoasă',
     themeDark: 'Întunecată',
+    themeColorful: 'Colorată',
     workDay: 'Zi de lucru',
     startDay: 'Începe ziua',
     endDay: 'Termină ziua',
@@ -315,7 +314,6 @@ const translations: Record<
     openTimePicker: 'Alege ora',
     addTask: 'Adaugă sarcină',
     timePlaceholder: 'Ora (HH:mm)',
-    projectPlaceholder: 'Proiect',
     taskPlaceholder: 'Sarcină',
     notesPlaceholder: 'Comentariu',
     addTaskButton: 'Adaugă sarcina',
@@ -346,14 +344,13 @@ const translations: Record<
     done: 'Gata',
     fileSaved: 'Fișier salvat',
     exportError: 'Exportul a eșuat.',
-    csvHeader: 'Data,Ora,Proiect,Sarcină,Comentariu,Status,Timp sarcină',
+    csvHeader: 'Data,Ora,Sarcină,Comentariu,Status,Timp sarcină',
   },
 };
 
 const INITIAL_FORM: NewTask = {
   date: today,
-  time: '09:00',
-  project: '',
+  time: '08:30',
   task: '',
   notes: '',
 };
@@ -373,27 +370,24 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('calendar');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
   const t = translations[language];
   const isDark = themeMode === 'dark';
+  const isColorful = themeMode === 'colorful';
   const c = {
-    appBg: isDark ? '#0f172a' : '#eef3ff',
-    cardBg: isDark ? '#111b2f' : '#ffffff',
-    cardBorder: isDark ? '#27344d' : '#e4e9f7',
-    textPrimary: isDark ? '#e5ecff' : '#1b1b1f',
-    textSecondary: isDark ? '#aab9da' : '#606781',
-    tabBg: isDark ? '#0f1a2d' : '#ffffff',
-    tabBorder: isDark ? '#243249' : '#dbe3f7',
-    tabActiveBg: isDark ? '#1d335c' : '#eaf1ff',
-    tabIcon: isDark ? '#9fb1d8' : '#6c7389',
-    tabIconActive: '#3b82f6',
+    appBg: isColorful ? '#eef8f6' : isDark ? '#0f172a' : '#eef3ff',
+    cardBg: isColorful ? '#ffffff' : isDark ? '#111b2f' : '#ffffff',
+    cardBorder: isColorful ? '#ccebe3' : isDark ? '#27344d' : '#e4e9f7',
+    textPrimary: isColorful ? '#0d3b36' : isDark ? '#e5ecff' : '#1b1b1f',
+    textSecondary: isColorful ? '#2f6b64' : isDark ? '#aab9da' : '#606781',
+    tabBg: isColorful ? '#ffffff' : isDark ? '#0f1a2d' : '#ffffff',
+    tabBorder: isColorful ? '#bfe7de' : isDark ? '#243249' : '#dbe3f7',
+    tabActiveBg: isColorful ? '#d8f4ee' : isDark ? '#1d335c' : '#eaf1ff',
+    tabIcon: isColorful ? '#3b7f73' : isDark ? '#9fb1d8' : '#6c7389',
+    tabIconActive: isColorful ? '#0ea5a5' : '#3b82f6',
   };
   const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
-  const dateWheelRef = useRef<FlatList<string>>(null);
-  const timeWheelRef = useRef<FlatList<string>>(null);
   const lastDateIndexRef = useRef<number>(-1);
   const lastTimeIndexRef = useRef<number>(-1);
 
@@ -417,7 +411,6 @@ export default function App() {
             id: item.id,
             date: item.date,
             time: item.time ?? '09:00',
-            project: item.project ?? '',
             task: item.task ?? '',
             notes: item.notes ?? '',
             completed: item.completed ?? false,
@@ -430,7 +423,7 @@ export default function App() {
         if (savedLanguage === 'uk' || savedLanguage === 'en' || savedLanguage === 'ro') {
           setLanguage(savedLanguage);
         }
-        if (savedTheme === 'light' || savedTheme === 'dark') {
+        if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'colorful') {
           setThemeMode(savedTheme);
         }
         if (rawWorkDay) {
@@ -573,32 +566,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!showDatePicker || !dateWheelRef.current) {
-      return;
-    }
-    requestAnimationFrame(() => {
-      dateWheelRef.current?.scrollToIndex({
-        index: selectedDateIndex,
-        animated: true,
-        viewPosition: 0.5,
-      });
-      lastDateIndexRef.current = selectedDateIndex;
-    });
-  }, [selectedDateIndex, showDatePicker]);
+    lastDateIndexRef.current = selectedDateIndex;
+  }, [selectedDateIndex]);
 
   useEffect(() => {
-    if (!showTimePicker || !timeWheelRef.current) {
-      return;
-    }
-    requestAnimationFrame(() => {
-      timeWheelRef.current?.scrollToIndex({
-        index: selectedTimeIndex,
-        animated: true,
-        viewPosition: 0.5,
-      });
-      lastTimeIndexRef.current = selectedTimeIndex;
-    });
-  }, [selectedTimeIndex, showTimePicker]);
+    lastTimeIndexRef.current = selectedTimeIndex;
+  }, [selectedTimeIndex]);
 
   const handleDateWheelScroll = (offsetY: number) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
@@ -634,7 +607,6 @@ export default function App() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: form.date,
       time: form.time,
-      project: form.project.trim(),
       task: form.task.trim(),
       notes: form.notes.trim(),
       completed: false,
@@ -747,7 +719,6 @@ export default function App() {
       [
         item.date,
         item.time,
-        item.project,
         item.task,
         item.notes,
         item.completed ? t.completed : t.pending,
@@ -997,7 +968,6 @@ export default function App() {
         {currentTask ? (
           <>
             <Text style={styles.entryTask}>{currentTask.date} {currentTask.time}</Text>
-            <Text style={styles.entryProject}>{currentTask.project || '-'}</Text>
             <Text style={styles.entryNotes}>{currentTask.task}</Text>
             {!!currentTask.notes && <Text style={styles.entryNotes}>{currentTask.notes}</Text>}
             <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(currentTask, nowTick))}</Text>
@@ -1022,7 +992,6 @@ export default function App() {
         {nextTask ? (
           <>
             <Text style={styles.entryTask}>{nextTask.date} {nextTask.time}</Text>
-            <Text style={styles.entryProject}>{nextTask.project || '-'}</Text>
             <Text style={styles.entryNotes}>{nextTask.task}</Text>
           </>
         ) : (
@@ -1077,15 +1046,12 @@ export default function App() {
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.addTask}</Text>
         <Text style={styles.menuSubtitle}>{t.selectDay}: {formatReadableDate(form.date)}</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => setShowDatePicker((prev) => !prev)}>
-          <Text style={styles.secondaryButtonText}>{t.openDatePicker}</Text>
-        </Pressable>
-        {showDatePicker && (
-          <View style={styles.dateWheelContainer}>
+        <View style={styles.pickerRow}>
+          <View style={[styles.dateWheelContainer, styles.halfWheel]}>
             <FlatList
-              ref={dateWheelRef}
               data={dateOptions}
               keyExtractor={(item) => item}
+              initialScrollIndex={selectedDateIndex}
               getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
               showsVerticalScrollIndicator={false}
               snapToInterval={WHEEL_ITEM_HEIGHT}
@@ -1112,16 +1078,11 @@ export default function App() {
             />
             <View pointerEvents="none" style={styles.wheelCenterBand} />
           </View>
-        )}
-        <Pressable style={styles.secondaryButton} onPress={() => setShowTimePicker((prev) => !prev)}>
-          <Text style={styles.secondaryButtonText}>{t.openTimePicker}: {form.time}</Text>
-        </Pressable>
-        {showTimePicker && (
-          <View style={styles.timeWheelContainer}>
+          <View style={[styles.timeWheelContainer, styles.halfWheel]}>
             <FlatList
-              ref={timeWheelRef}
               data={timeOptions}
               keyExtractor={(item) => item}
+              initialScrollIndex={selectedTimeIndex}
               getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
               showsVerticalScrollIndicator={false}
               snapToInterval={WHEEL_ITEM_HEIGHT}
@@ -1146,13 +1107,7 @@ export default function App() {
             />
             <View pointerEvents="none" style={styles.wheelCenterBand} />
           </View>
-        )}
-        <TextInput
-          style={styles.input}
-          value={form.project}
-          onChangeText={(text) => updateField('project', text)}
-          placeholder={t.projectPlaceholder}
-        />
+        </View>
         <TextInput
           style={styles.input}
           value={form.task}
@@ -1181,7 +1136,7 @@ export default function App() {
           renderItem={({ item }) => (
             <View style={styles.entryCard}>
               <View style={styles.entryHeader}>
-                <Text style={styles.entryProject}>{item.time} • {item.project || '-'}</Text>
+                <Text style={styles.entryTask}>{item.time}</Text>
                 <Text style={[styles.entryHours, item.completed && styles.completedText]}>
                   {item.completed ? t.completed : t.pending}
                 </Text>
@@ -1220,7 +1175,7 @@ export default function App() {
             ListEmptyComponent={<Text style={styles.emptyText}>{t.noGeneralTasks}</Text>}
             renderItem={({ item }) => (
               <View style={styles.entryCard}>
-                <Text style={styles.entryTask}>{item.date} {item.time} • {item.project || '-'}</Text>
+                <Text style={styles.entryTask}>{item.date} {item.time}</Text>
                 <Text style={styles.entryNotes}>{item.task}</Text>
               </View>
             )}
@@ -1277,7 +1232,6 @@ export default function App() {
           renderItem={({ item, index }) => (
             <View style={styles.entryCard}>
               <Text style={styles.entryTask}>{index + 1}. {item.task}</Text>
-              <Text style={styles.entryNotes}>{item.project || '-'}</Text>
               <Text style={styles.entryNotes}>
                 {t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))} (
                 {dayStats.netMs > 0 ? Math.round((getTaskTrackedMs(item, nowTick) / dayStats.netMs) * 100) : 0}%)
@@ -1296,7 +1250,7 @@ export default function App() {
           ListEmptyComponent={<Text style={styles.emptyText}>{t.noTasksForDay}</Text>}
           renderItem={({ item }) => (
             <View style={styles.entryCard}>
-              <Text style={styles.entryTask}>{item.date} {item.time} • {item.project || '-'}</Text>
+              <Text style={styles.entryTask}>{item.date} {item.time}</Text>
               <Text style={styles.entryNotes}>{item.task} ({item.completed ? t.completed : t.pending})</Text>
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
             </View>
@@ -1329,14 +1283,14 @@ export default function App() {
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.theme}</Text>
         <View style={styles.languageButtons}>
-          {(['light', 'dark'] as ThemeMode[]).map((mode) => (
+          {(['light', 'dark', 'colorful'] as ThemeMode[]).map((mode) => (
             <Pressable
               key={mode}
               onPress={() => setThemeMode(mode)}
               style={[styles.languageButton, themeMode === mode && styles.languageButtonActive]}
             >
               <Text style={[styles.languageButtonText, themeMode === mode && styles.languageButtonTextActive]}>
-                {mode === 'light' ? t.themeLight : t.themeDark}
+                {mode === 'light' ? t.themeLight : mode === 'dark' ? t.themeDark : t.themeColorful}
               </Text>
             </Pressable>
           ))}
@@ -1560,6 +1514,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#f9fbff',
     height: 200,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  halfWheel: {
+    flex: 1,
+    marginTop: 0,
+    marginBottom: 0,
   },
   wheelContent: {
     paddingVertical: WHEEL_ITEM_HEIGHT * 2,
@@ -1794,11 +1758,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  entryProject: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#15161a',
   },
   entryHours: {
     fontSize: 13,
