@@ -2481,9 +2481,9 @@ export default function App() {
             <View style={styles.entryCard}>
               <View style={styles.entryHeader}>
                 <Text style={styles.entryTask}>{item.time}</Text>
-                <Text style={[styles.entryHours, item.completed && styles.completedText]}>
-                  {item.completed ? t.completed : t.pending}
-                </Text>
+                <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
+                  <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
+                </View>
               </View>
               <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
@@ -3241,7 +3241,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#84CC16',
   },
   statusInProgressChip: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#0EA5E9',
   },
   dayControlRow: {
     flexDirection: 'row',
