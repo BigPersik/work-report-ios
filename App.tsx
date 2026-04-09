@@ -36,6 +36,9 @@ type TaskEntry = {
   task: string;
   notes: string;
   tag?: string;
+  taskI18n?: Partial<Record<Language, string>>;
+  notesI18n?: Partial<Record<Language, string>>;
+  tagI18n?: Partial<Record<Language, string>>;
   priority: Priority;
   inbox?: boolean;
   completed: boolean;
@@ -663,9 +666,50 @@ export default function App() {
   const ongoingTaskNotifTaskIdRef = useRef<string | null>(null);
   const webAudioContextRef = useRef<AudioContext | null>(null);
   const webAudioUnlockedRef = useRef(false);
+  const previousLanguageRef = useRef<Language>(language);
+  const translationCacheRef = useRef<Map<string, string>>(new Map());
+  const entriesRef = useRef<TaskEntry[]>(entries);
+  const taskTemplatesRef = useRef<Record<Language, string[]>>(taskTemplates);
   const animateNextLayout = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   };
+  const translateText = async (text: string, from: Language, to: Language) => {
+    const clean = text.trim();
+    if (!clean || from === to) {
+      return text;
+    }
+    const key = `${from}:${to}:${clean}`;
+    const cached = translationCacheRef.current.get(key);
+    if (cached) {
+      return cached;
+    }
+    const langMap: Record<Language, string> = { uk: 'uk', en: 'en', ro: 'ro' };
+    try {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=${langMap[from]}|${langMap[to]}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        return text;
+      }
+      const json = (await res.json()) as { responseData?: { translatedText?: string } };
+      const translated = json.responseData?.translatedText?.trim();
+      if (!translated) {
+        return text;
+      }
+      translationCacheRef.current.set(key, translated);
+      return translated;
+    } catch {
+      return text;
+    }
+  };
+  const localizedTask = (entry: TaskEntry) => entry.taskI18n?.[language] ?? entry.task;
+  const localizedNotes = (entry: TaskEntry) => entry.notesI18n?.[language] ?? entry.notes;
+  const localizedTag = (entry: TaskEntry) => entry.tagI18n?.[language] ?? entry.tag ?? '';
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+  useEffect(() => {
+    taskTemplatesRef.current = taskTemplates;
+  }, [taskTemplates]);
   const setWebMetaTag = (name: string, content: string) => {
     if (Platform.OS !== 'web') {
       return;
@@ -1016,6 +1060,9 @@ export default function App() {
             task: item.task ?? '',
             notes: item.notes ?? '',
             tag: item.tag ?? '',
+            taskI18n: item.taskI18n ?? undefined,
+            notesI18n: item.notesI18n ?? undefined,
+            tagI18n: item.tagI18n ?? undefined,
             priority:
               item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
                 ? item.priority
@@ -1109,6 +1156,48 @@ export default function App() {
     setIsUnlocked(false);
     void unlockWithBiometrics();
   }, [loading, lockEnabled]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    const from = previousLanguageRef.current;
+    const to = language;
+    previousLanguageRef.current = to;
+    if (from === to) {
+      return;
+    }
+    const run = async () => {
+      const sourceEntries = entriesRef.current;
+      const translatedEntries = await Promise.all(
+        sourceEntries.map(async (entry) => {
+          const srcTask = entry.taskI18n?.[from] ?? entry.task;
+          const srcNotes = entry.notesI18n?.[from] ?? entry.notes;
+          const srcTag = entry.tagI18n?.[from] ?? entry.tag ?? '';
+          const [taskTo, notesTo, tagTo] = await Promise.all([
+            translateText(srcTask, from, to),
+            translateText(srcNotes, from, to),
+            translateText(srcTag, from, to),
+          ]);
+          return {
+            ...entry,
+            taskI18n: { ...(entry.taskI18n ?? {}), [from]: srcTask, [to]: taskTo },
+            notesI18n: { ...(entry.notesI18n ?? {}), [from]: srcNotes, [to]: notesTo },
+            tagI18n: { ...(entry.tagI18n ?? {}), [from]: srcTag, [to]: tagTo },
+          };
+        }),
+      );
+      setEntries(translatedEntries);
+
+      const sourcePresets = taskTemplatesRef.current[from] ?? [];
+      const translatedPresets = await Promise.all(sourcePresets.map((p) => translateText(p, from, to)));
+      setTaskTemplates((prev) => ({
+        ...prev,
+        [to]: Array.from(new Set([...(prev[to] ?? []), ...translatedPresets.filter(Boolean)])),
+      }));
+    };
+    void run();
+  }, [language, loading]);
 
   useEffect(() => {
     if (loading) {
@@ -1438,6 +1527,9 @@ export default function App() {
       task: form.task.trim(),
       notes: form.notes.trim(),
       tag: form.tag.trim() || undefined,
+      taskI18n: { [language]: form.task.trim() },
+      notesI18n: { [language]: form.notes.trim() },
+      tagI18n: { [language]: form.tag.trim() || '' },
       priority: form.priority,
       inbox: false,
       completed: false,
@@ -1463,6 +1555,9 @@ export default function App() {
       task: form.task.trim(),
       notes: form.notes.trim(),
       tag: form.tag.trim() || undefined,
+      taskI18n: { [language]: form.task.trim() },
+      notesI18n: { [language]: form.notes.trim() },
+      tagI18n: { [language]: form.tag.trim() || '' },
       priority: form.priority,
       inbox: true,
       completed: false,
@@ -1524,7 +1619,7 @@ export default function App() {
       return;
     }
     setCommentTaskId(taskId);
-    setCommentDraft(target.notes ?? '');
+    setCommentDraft(target.notesI18n?.[language] ?? target.notes ?? '');
   };
 
   const saveCompletedTaskComment = () => {
@@ -1534,7 +1629,16 @@ export default function App() {
     animateNextLayout();
     setEntries((prev) =>
       prev.map((item) =>
-        item.id === commentTaskId && item.completed ? { ...item, notes: commentDraft.trim() } : item,
+        item.id === commentTaskId && item.completed
+          ? {
+              ...item,
+              notes: commentDraft.trim(),
+              notesI18n: {
+                ...(item.notesI18n ?? {}),
+                [language]: commentDraft.trim(),
+              },
+            }
+          : item,
       ),
     );
     closeCommentModal();
@@ -1898,10 +2002,10 @@ export default function App() {
       [
         item.date,
         item.time,
-        item.task,
-        item.tag ?? '',
+        localizedTask(item),
+        localizedTag(item),
         getPriorityLabel(item.priority),
-        item.notes,
+        localizedNotes(item),
         item.completed ? t.completed : t.pending,
         formatDuration(getTaskTrackedMs(item, nowTick)),
       ]
@@ -1953,7 +2057,7 @@ export default function App() {
       `${t.tasksForDay}:`,
       ...dayItems.map((item) => {
         const pr = item.priority === 'high' ? t.priorityHigh : item.priority === 'low' ? t.priorityLow : t.priorityMedium;
-        return `- ${item.time} | ${item.task}${item.tag ? ` #${item.tag}` : ''} | ${pr} | ${
+        return `- ${item.time} | ${localizedTask(item)}${localizedTag(item) ? ` #${localizedTag(item)}` : ''} | ${pr} | ${
           item.completed ? t.completed : t.pending
         }`;
       }),
@@ -1979,7 +2083,7 @@ export default function App() {
         .slice(0, 200)
         .map(
           (item) =>
-            `<tr><td>${item.date} ${item.time}</td><td>${item.task}</td><td>${getPriorityLabel(
+            `<tr><td>${item.date} ${item.time}</td><td>${localizedTask(item)}</td><td>${getPriorityLabel(
               item.priority,
             )}</td><td>${item.completed ? t.completed : t.pending}</td><td>${formatDuration(
               getTaskTrackedMs(item, nowTick),
@@ -2149,9 +2253,9 @@ export default function App() {
       return true;
     }
     return (
-      item.task.toLowerCase().includes(q) ||
-      item.notes.toLowerCase().includes(q) ||
-      (item.tag ?? '').toLowerCase().includes(q)
+      localizedTask(item).toLowerCase().includes(q) ||
+      localizedNotes(item).toLowerCase().includes(q) ||
+      localizedTag(item).toLowerCase().includes(q)
     );
   };
   const matchesStatus = (item: TaskEntry) =>
@@ -2497,8 +2601,8 @@ export default function App() {
         {currentTask ? (
           <>
             <Text style={[styles.entryTask, { color: taskMetaTextColor }]}>{currentTask.date} {currentTask.time}</Text>
-            <Text style={[styles.entryNotes, { color: taskMainTextColor }]}>{currentTask.task}</Text>
-            {!!currentTask.notes && <Text style={[styles.entryNotes, { color: taskMetaTextColor }]}>{currentTask.notes}</Text>}
+            <Text style={[styles.entryNotes, { color: taskMainTextColor }]}>{localizedTask(currentTask)}</Text>
+            {!!localizedNotes(currentTask) && <Text style={[styles.entryNotes, { color: taskMetaTextColor }]}>{localizedNotes(currentTask)}</Text>}
             <Text style={[styles.entryNotes, { color: taskMetaTextColor }]}>
               {t.taskTime}: {formatDuration(getTaskTrackedMs(currentTask, nowTick))}
             </Text>
@@ -2523,7 +2627,7 @@ export default function App() {
         {nextTask ? (
           <>
             <Text style={[styles.entryTask, { color: taskMetaTextColor }]}>{nextTask.date} {nextTask.time}</Text>
-            <Text style={[styles.entryNotes, { color: taskMainTextColor }]}>{nextTask.task}</Text>
+            <Text style={[styles.entryNotes, { color: taskMainTextColor }]}>{localizedTask(nextTask)}</Text>
             <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(() => startTaskNow(nextTask.id))}>
               <Text style={styles.buttonText}>{t.startNow}</Text>
             </Pressable>
@@ -2851,9 +2955,9 @@ export default function App() {
               <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
-              <Text style={styles.entryTask}>{item.task}</Text>
-              {!!item.tag && <Text style={styles.entryNotes}>#{item.tag}</Text>}
-              {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
+              <Text style={styles.entryTask}>{localizedTask(item)}</Text>
+              {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
+              {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
               <View style={styles.taskActionRow}>
                 <Pressable onPress={withInteractionFeedback(() => (item.trackingStartedAt ? pauseTaskTimer(item.id) : startTaskTimer(item.id)))}>
@@ -2892,7 +2996,7 @@ export default function App() {
             renderItem={({ item }) => (
               <View style={styles.entryCard}>
                 <Text style={styles.entryTask}>{item.date} {item.time}</Text>
-                <Text style={styles.entryNotes}>{item.task}</Text>
+                <Text style={styles.entryNotes}>{localizedTask(item)}</Text>
               </View>
             )}
           />
@@ -2910,9 +3014,9 @@ export default function App() {
               <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
-              <Text style={styles.entryTask}>{item.task}</Text>
-              {!!item.tag && <Text style={styles.entryNotes}>#{item.tag}</Text>}
-              {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
+              <Text style={styles.entryTask}>{localizedTask(item)}</Text>
+              {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
+              {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
               <View style={styles.taskActionRow}>
                 <Pressable onPress={withInteractionFeedback(() => planInboxTask(item.id))}>
                   <Text style={styles.markDoneText}>{t.planFromInbox}</Text>
@@ -3060,7 +3164,7 @@ export default function App() {
           ListEmptyComponent={<Text style={styles.emptyText}>{t.noTasksForDay}</Text>}
           renderItem={({ item, index }) => (
             <View style={styles.entryCard}>
-              <Text style={styles.entryTask}>{index + 1}. {item.task}</Text>
+              <Text style={styles.entryTask}>{index + 1}. {localizedTask(item)}</Text>
               <Text style={styles.entryNotes}>
                 {t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))} (
                 {dayStats.netMs > 0 ? Math.round((getTaskTrackedMs(item, nowTick) / dayStats.netMs) * 100) : 0}%)
@@ -3086,8 +3190,8 @@ export default function App() {
               <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
                 <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
               </View>
-              <Text style={styles.entryNotes}>{item.task}</Text>
-              {!!item.tag && <Text style={styles.entryNotes}>#{item.tag}</Text>}
+              <Text style={styles.entryNotes}>{localizedTask(item)}</Text>
+              {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
               {item.completed && (
                 <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
