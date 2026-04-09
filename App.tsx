@@ -64,6 +64,11 @@ const formatLocalDate = (date: Date) => {
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 };
+const formatLocalTime = (date: Date) => {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+};
 const today = formatLocalDate(new Date());
 
 const translations: Record<
@@ -111,6 +116,7 @@ const translations: Record<
     startTask: string;
     pauseTask: string;
     resumeTask: string;
+    startNow: string;
     taskTime: string;
     exportCsv: string;
     generalTasks: string;
@@ -181,6 +187,7 @@ const translations: Record<
     startTask: 'Старт',
     pauseTask: 'Пауза',
     resumeTask: 'Продовжити',
+    startNow: 'Взяти в роботу зараз',
     taskTime: 'Час задачі',
     exportCsv: 'Експорт CSV',
     generalTasks: 'Загальні задачі',
@@ -250,6 +257,7 @@ const translations: Record<
     startTask: 'Start',
     pauseTask: 'Pause',
     resumeTask: 'Resume',
+    startNow: 'Start now',
     taskTime: 'Task time',
     exportCsv: 'Export CSV',
     generalTasks: 'General tasks',
@@ -319,6 +327,7 @@ const translations: Record<
     startTask: 'Start',
     pauseTask: 'Pauză',
     resumeTask: 'Reia',
+    startNow: 'Începe acum',
     taskTime: 'Timp sarcină',
     exportCsv: 'Exportă CSV',
     generalTasks: 'Sarcini generale',
@@ -744,6 +753,37 @@ export default function App() {
     );
   };
 
+  const startTaskNow = (id: string) => {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const nowMs = now.getTime();
+    const newDate = formatLocalDate(now);
+    const newTime = formatLocalTime(now);
+
+    setEntries((prev) =>
+      prev.map((item) => {
+        // Pause any running task before switching.
+        if (item.id !== id && item.trackingStartedAt) {
+          return {
+            ...item,
+            trackedMs: item.trackedMs + Math.max(0, nowMs - new Date(item.trackingStartedAt).getTime()),
+            trackingStartedAt: undefined,
+          };
+        }
+        if (item.id === id) {
+          return {
+            ...item,
+            date: newDate,
+            time: newTime,
+            completed: false,
+            trackingStartedAt: nowIso,
+          };
+        }
+        return item;
+      }),
+    );
+  };
+
   const exportCsv = async () => {
     if (entries.length === 0) {
       Alert.alert(t.noDataTitle, t.noDataMessage);
@@ -1031,6 +1071,9 @@ export default function App() {
           <>
             <Text style={styles.entryTask}>{nextTask.date} {nextTask.time}</Text>
             <Text style={styles.entryNotes}>{nextTask.task}</Text>
+            <Pressable style={styles.primaryButton} onPress={() => startTaskNow(nextTask.id)}>
+              <Text style={styles.buttonText}>{t.startNow}</Text>
+            </Pressable>
           </>
         ) : (
           <Text style={styles.emptyText}>{t.noNextTask}</Text>
