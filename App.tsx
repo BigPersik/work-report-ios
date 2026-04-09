@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -64,6 +65,7 @@ const WORKDAY_KEY = 'work-report-workday-v1';
 const THEME_KEY = 'work-report-theme-v1';
 const SOUND_KEY = 'work-report-sound-v1';
 const HAPTICS_KEY = 'work-report-haptics-v1';
+const NOTIFICATIONS_KEY = 'work-report-notifications-v1';
 const formatLocalDate = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -92,6 +94,7 @@ const translations: Record<
     theme: string;
     sound: string;
     haptics: string;
+    notifications: string;
     on: string;
     off: string;
     themeLight: string;
@@ -167,6 +170,7 @@ const translations: Record<
     theme: 'Тема',
     sound: 'Звук',
     haptics: 'Вібрація',
+    notifications: 'Сповіщення',
     on: 'Увімк.',
     off: 'Вимк.',
     themeLight: 'Світла',
@@ -241,6 +245,7 @@ const translations: Record<
     theme: 'Theme',
     sound: 'Sound',
     haptics: 'Haptics',
+    notifications: 'Notifications',
     on: 'On',
     off: 'Off',
     themeLight: 'Light',
@@ -315,6 +320,7 @@ const translations: Record<
     theme: 'Temă',
     sound: 'Sunet',
     haptics: 'Vibratie',
+    notifications: 'Notificari',
     on: 'Pornit',
     off: 'Oprit',
     themeLight: 'Luminoasă',
@@ -398,6 +404,16 @@ const USE_NATIVE_IOS_PICKER = true;
 const CLICK_SOUND_URI =
   'data:audio/wav;base64,UklGRjwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YRgAAAAAABkAMgBKAGAAdABmAE8AOQAjAAwAAAAA8f/k/9f/yv/N/9f/6f8AAP//';
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
 function TabGlyph({
   type,
   active,
@@ -444,6 +460,7 @@ export default function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('light');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [screen, setScreen] = useState<Screen>('calendar');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
@@ -479,6 +496,8 @@ export default function App() {
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
+  const ongoingTaskNotifIdRef = useRef<string | null>(null);
+  const ongoingTaskNotifTaskIdRef = useRef<string | null>(null);
   const webAudioContextRef = useRef<AudioContext | null>(null);
   const webAudioUnlockedRef = useRef(false);
   const setWebMetaTag = (name: string, content: string) => {
@@ -765,13 +784,14 @@ export default function App() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [raw, savedLanguage, rawWorkDay, savedTheme, savedSound, savedHaptics] = await Promise.all([
+        const [raw, savedLanguage, rawWorkDay, savedTheme, savedSound, savedHaptics, savedNotifications] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEY),
           AsyncStorage.getItem(LANGUAGE_KEY),
           AsyncStorage.getItem(WORKDAY_KEY),
           AsyncStorage.getItem(THEME_KEY),
           AsyncStorage.getItem(SOUND_KEY),
           AsyncStorage.getItem(HAPTICS_KEY),
+          AsyncStorage.getItem(NOTIFICATIONS_KEY),
         ]);
         if (raw) {
           const parsed: TaskEntry[] = JSON.parse(raw);
@@ -799,6 +819,9 @@ export default function App() {
         }
         if (savedHaptics === '0' || savedHaptics === '1') {
           setHapticsEnabled(savedHaptics === '1');
+        }
+        if (savedNotifications === '0' || savedNotifications === '1') {
+          setNotificationsEnabled(savedNotifications === '1');
         }
         if (rawWorkDay) {
           const parsedWorkDay: WorkDayState = JSON.parse(rawWorkDay);
@@ -831,10 +854,11 @@ export default function App() {
       AsyncStorage.setItem(THEME_KEY, themeMode),
       AsyncStorage.setItem(SOUND_KEY, soundEnabled ? '1' : '0'),
       AsyncStorage.setItem(HAPTICS_KEY, hapticsEnabled ? '1' : '0'),
+      AsyncStorage.setItem(NOTIFICATIONS_KEY, notificationsEnabled ? '1' : '0'),
     ]).catch(() => {
       Alert.alert(t.error, t.saveError);
     });
-  }, [entries, hapticsEnabled, language, loading, soundEnabled, t.error, t.saveError, themeMode, workDay]);
+  }, [entries, hapticsEnabled, language, loading, notificationsEnabled, soundEnabled, t.error, t.saveError, themeMode, workDay]);
 
   const summary = useMemo(() => {
     const total = entries.length;
@@ -1124,6 +1148,7 @@ export default function App() {
     };
     setEntries((prev) => [entry, ...prev]);
     setForm((prev) => ({ ...INITIAL_FORM, date: prev.date, time: prev.time }));
+    void scheduleTaskReminders(entry);
   };
 
   useEffect(() => {
@@ -1136,6 +1161,102 @@ export default function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !notificationsEnabled) {
+      return;
+    }
+    const ensurePermission = async () => {
+      const current = await Notifications.getPermissionsAsync();
+      if (!current.granted) {
+        await Notifications.requestPermissionsAsync();
+      }
+    };
+    void ensurePermission();
+  }, [notificationsEnabled]);
+
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      void stopOngoingTaskNotification();
+    }
+  }, [notificationsEnabled]);
+
+  const stopOngoingTaskNotification = async () => {
+    if (!ongoingTaskNotifIdRef.current) {
+      return;
+    }
+    try {
+      await Notifications.cancelScheduledNotificationAsync(ongoingTaskNotifIdRef.current);
+    } catch {
+      // ignore cancellation failures
+    } finally {
+      ongoingTaskNotifIdRef.current = null;
+    }
+  };
+
+  const startOngoingTaskNotification = async (taskTitle: string) => {
+    if (Platform.OS === 'web' || !notificationsEnabled) {
+      return;
+    }
+    await stopOngoingTaskNotification();
+    const permission = await Notifications.getPermissionsAsync();
+    if (!permission.granted) {
+      return;
+    }
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'DayFlow: task in progress',
+        body: taskTitle,
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 300,
+        repeats: true,
+      },
+    });
+    ongoingTaskNotifIdRef.current = id;
+  };
+
+  const scheduleTaskReminders = async (entry: TaskEntry) => {
+    if (Platform.OS === 'web' || !notificationsEnabled) {
+      return;
+    }
+    const permission = await Notifications.getPermissionsAsync();
+    if (!permission.granted) {
+      return;
+    }
+    const taskAt = parseDateTime(entry);
+    const now = new Date();
+    const atMs = taskAt.getTime();
+    const minus5 = new Date(atMs - 5 * 60 * 1000);
+    if (minus5.getTime() > now.getTime()) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'DayFlow reminder',
+          body: `In 5 minutes: ${entry.task}`,
+          sound: true,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: minus5,
+        },
+      });
+    }
+    if (atMs > now.getTime()) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'DayFlow reminder',
+          body: `Start now: ${entry.task}`,
+          sound: true,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: taskAt,
+        },
+      });
+    }
+  };
 
   const removeTask = (id: string) => {
     setEntries((prev) => prev.filter((item) => item.id !== id));
@@ -1158,6 +1279,7 @@ export default function App() {
         };
       }),
     );
+    void stopOngoingTaskNotification();
   };
 
   const toggleDone = (id: string) => {
@@ -1180,6 +1302,7 @@ export default function App() {
         };
       }),
     );
+    void stopOngoingTaskNotification();
   };
 
   const startTaskTimer = (id: string) => {
@@ -1206,6 +1329,10 @@ export default function App() {
         return item;
       }),
     );
+    const running = entries.find((item) => item.id === id);
+    if (running) {
+      void startOngoingTaskNotification(running.task);
+    }
   };
 
   const pauseTaskTimer = (id: string) => {
@@ -1223,6 +1350,7 @@ export default function App() {
         };
       }),
     );
+    void stopOngoingTaskNotification();
   };
 
   const startTaskNow = (id: string) => {
@@ -1254,6 +1382,10 @@ export default function App() {
         return item;
       }),
     );
+    const running = entries.find((item) => item.id === id);
+    if (running) {
+      void startOngoingTaskNotification(running.task);
+    }
   };
 
   const exportCsv = async () => {
@@ -1413,6 +1545,7 @@ export default function App() {
           : item,
       ),
     );
+    void stopOngoingTaskNotification();
   };
 
   const startPause = () => {
@@ -1442,6 +1575,7 @@ export default function App() {
           : item,
       ),
     );
+    void stopOngoingTaskNotification();
   };
 
   const resumeDay = () => {
@@ -1479,6 +1613,26 @@ export default function App() {
         .slice(0, 3),
     [entries, nowTick],
   );
+  const activelyTrackedTask = useMemo(
+    () => entries.find((item) => Boolean(item.trackingStartedAt) && !item.completed),
+    [entries],
+  );
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+    if (!notificationsEnabled || !activelyTrackedTask) {
+      ongoingTaskNotifTaskIdRef.current = null;
+      void stopOngoingTaskNotification();
+      return;
+    }
+    if (ongoingTaskNotifTaskIdRef.current === activelyTrackedTask.id) {
+      return;
+    }
+    ongoingTaskNotifTaskIdRef.current = activelyTrackedTask.id;
+    void startOngoingTaskNotification(activelyTrackedTask.task);
+  }, [activelyTrackedTask, notificationsEnabled]);
 
   const renderCalendar = () => (
     <>
@@ -2022,6 +2176,27 @@ export default function App() {
             style={[styles.languageButton, !hapticsEnabled && styles.languageButtonActive]}
           >
             <Text style={[styles.languageButtonText, !hapticsEnabled && styles.languageButtonTextActive]}>
+              {t.off}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.notifications}</Text>
+        <View style={styles.languageButtons}>
+          <Pressable
+            onPress={withInteractionFeedback(() => setNotificationsEnabled(true))}
+            style={[styles.languageButton, notificationsEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, notificationsEnabled && styles.languageButtonTextActive]}>
+              {t.on}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={withInteractionFeedback(() => setNotificationsEnabled(false))}
+            style={[styles.languageButton, !notificationsEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, !notificationsEnabled && styles.languageButtonTextActive]}>
               {t.off}
             </Text>
           </Pressable>
