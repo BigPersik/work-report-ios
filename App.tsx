@@ -42,6 +42,7 @@ type NewTask = {
 
 type Language = 'uk' | 'en' | 'ro';
 type Screen = 'calendar' | 'report' | 'settings';
+type ThemeMode = 'light' | 'dark';
 
 type BreakEntry = {
   id: string;
@@ -59,6 +60,7 @@ type WorkDayState = {
 const STORAGE_KEY = 'work-report-entries-v1';
 const LANGUAGE_KEY = 'work-report-language-v1';
 const WORKDAY_KEY = 'work-report-workday-v1';
+const THEME_KEY = 'work-report-theme-v1';
 const formatLocalDate = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -79,6 +81,9 @@ const translations: Record<
     menuSettings: string;
     backToMenu: string;
     language: string;
+    theme: string;
+    themeLight: string;
+    themeDark: string;
     workDay: string;
     startDay: string;
     endDay: string;
@@ -99,6 +104,7 @@ const translations: Record<
     calendarTitle: string;
     selectDay: string;
     openDatePicker: string;
+    openTimePicker: string;
     addTask: string;
     timePlaceholder: string;
     projectPlaceholder: string;
@@ -145,6 +151,9 @@ const translations: Record<
     menuSettings: 'Налаштування',
     backToMenu: 'Назад',
     language: 'Мова',
+    theme: 'Тема',
+    themeLight: 'Світла',
+    themeDark: 'Темна',
     workDay: 'Робочий день',
     startDay: 'Розпочати день',
     endDay: 'Завершити день',
@@ -165,6 +174,7 @@ const translations: Record<
     calendarTitle: 'Календар',
     selectDay: 'Обраний день',
     openDatePicker: 'Обрати дату',
+    openTimePicker: 'Обрати час',
     addTask: 'Додати завдання',
     timePlaceholder: 'Час (HH:mm)',
     projectPlaceholder: 'Проєкт',
@@ -210,6 +220,9 @@ const translations: Record<
     menuSettings: 'Settings',
     backToMenu: 'Back',
     language: 'Language',
+    theme: 'Theme',
+    themeLight: 'Light',
+    themeDark: 'Dark',
     workDay: 'Work day',
     startDay: 'Start day',
     endDay: 'End day',
@@ -230,6 +243,7 @@ const translations: Record<
     calendarTitle: 'Calendar',
     selectDay: 'Selected day',
     openDatePicker: 'Pick date',
+    openTimePicker: 'Pick time',
     addTask: 'Add task',
     timePlaceholder: 'Time (HH:mm)',
     projectPlaceholder: 'Project',
@@ -275,6 +289,9 @@ const translations: Record<
     menuSettings: 'Setări',
     backToMenu: 'Înapoi',
     language: 'Limbă',
+    theme: 'Temă',
+    themeLight: 'Luminoasă',
+    themeDark: 'Întunecată',
     workDay: 'Zi de lucru',
     startDay: 'Începe ziua',
     endDay: 'Termină ziua',
@@ -295,6 +312,7 @@ const translations: Record<
     calendarTitle: 'Calendar',
     selectDay: 'Zi selectată',
     openDatePicker: 'Alege data',
+    openTimePicker: 'Alege ora',
     addTask: 'Adaugă sarcină',
     timePlaceholder: 'Ora (HH:mm)',
     projectPlaceholder: 'Proiect',
@@ -345,20 +363,39 @@ const getTaskTrackedMs = (entry: TaskEntry, nowMs: number) => {
   const live = entry.trackingStartedAt ? Math.max(0, nowMs - new Date(entry.trackingStartedAt).getTime()) : 0;
   return Math.max(0, entry.trackedMs + live);
 };
+const WHEEL_ITEM_HEIGHT = 40;
 
 export default function App() {
   const [entries, setEntries] = useState<TaskEntry[]>([]);
   const [form, setForm] = useState<NewTask>(INITIAL_FORM);
   const [language, setLanguage] = useState<Language>('uk');
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
   const [screen, setScreen] = useState<Screen>('calendar');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
   const t = translations[language];
+  const isDark = themeMode === 'dark';
+  const c = {
+    appBg: isDark ? '#0f172a' : '#eef3ff',
+    cardBg: isDark ? '#111b2f' : '#ffffff',
+    cardBorder: isDark ? '#27344d' : '#e4e9f7',
+    textPrimary: isDark ? '#e5ecff' : '#1b1b1f',
+    textSecondary: isDark ? '#aab9da' : '#606781',
+    tabBg: isDark ? '#0f1a2d' : '#ffffff',
+    tabBorder: isDark ? '#243249' : '#dbe3f7',
+    tabActiveBg: isDark ? '#1d335c' : '#eaf1ff',
+    tabIcon: isDark ? '#9fb1d8' : '#6c7389',
+    tabIconActive: '#3b82f6',
+  };
   const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
   const dateWheelRef = useRef<FlatList<string>>(null);
+  const timeWheelRef = useRef<FlatList<string>>(null);
+  const lastDateIndexRef = useRef<number>(-1);
+  const lastTimeIndexRef = useRef<number>(-1);
 
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
@@ -368,10 +405,11 @@ export default function App() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [raw, savedLanguage, rawWorkDay] = await Promise.all([
+        const [raw, savedLanguage, rawWorkDay, savedTheme] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEY),
           AsyncStorage.getItem(LANGUAGE_KEY),
           AsyncStorage.getItem(WORKDAY_KEY),
+          AsyncStorage.getItem(THEME_KEY),
         ]);
         if (raw) {
           const parsed: TaskEntry[] = JSON.parse(raw);
@@ -391,6 +429,9 @@ export default function App() {
         }
         if (savedLanguage === 'uk' || savedLanguage === 'en' || savedLanguage === 'ro') {
           setLanguage(savedLanguage);
+        }
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          setThemeMode(savedTheme);
         }
         if (rawWorkDay) {
           const parsedWorkDay: WorkDayState = JSON.parse(rawWorkDay);
@@ -418,10 +459,11 @@ export default function App() {
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries)),
       AsyncStorage.setItem(LANGUAGE_KEY, language),
       AsyncStorage.setItem(WORKDAY_KEY, JSON.stringify(workDay)),
+      AsyncStorage.setItem(THEME_KEY, themeMode),
     ]).catch(() => {
       Alert.alert(t.error, t.saveError);
     });
-  }, [entries, language, loading, t.error, t.saveError, workDay]);
+  }, [entries, language, loading, t.error, t.saveError, themeMode, workDay]);
 
   const summary = useMemo(() => {
     const total = entries.length;
@@ -487,8 +529,18 @@ export default function App() {
     }
     return list;
   }, []);
+  const timeOptions = useMemo(() => {
+    const list: string[] = [];
+    for (let h = 0; h < 24; h += 1) {
+      for (let m = 0; m < 60; m += 15) {
+        list.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+      }
+    }
+    return list;
+  }, []);
 
   const selectedDateIndex = Math.max(0, dateOptions.indexOf(form.date));
+  const selectedTimeIndex = Math.max(0, timeOptions.indexOf(form.time));
 
   const formatReadableDate = (value: string) => {
     const date = new Date(`${value}T00:00:00`);
@@ -504,11 +556,18 @@ export default function App() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const selectDate = async (value: string) => {
+  const selectDate = async (value: string, withHaptic = true) => {
     setForm((prev) => ({ ...prev, date: value }));
     const selected = new Date(`${value}T00:00:00`);
     setDisplayedMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
-    if (Platform.OS !== 'web') {
+    if (withHaptic && Platform.OS !== 'web') {
+      await Haptics.selectionAsync();
+    }
+  };
+
+  const selectTime = async (value: string, withHaptic = true) => {
+    setForm((prev) => ({ ...prev, time: value }));
+    if (withHaptic && Platform.OS !== 'web') {
       await Haptics.selectionAsync();
     }
   };
@@ -523,8 +582,47 @@ export default function App() {
         animated: true,
         viewPosition: 0.5,
       });
+      lastDateIndexRef.current = selectedDateIndex;
     });
   }, [selectedDateIndex, showDatePicker]);
+
+  useEffect(() => {
+    if (!showTimePicker || !timeWheelRef.current) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      timeWheelRef.current?.scrollToIndex({
+        index: selectedTimeIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+      lastTimeIndexRef.current = selectedTimeIndex;
+    });
+  }, [selectedTimeIndex, showTimePicker]);
+
+  const handleDateWheelScroll = (offsetY: number) => {
+    const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
+    const bounded = Math.max(0, Math.min(dateOptions.length - 1, index));
+    if (bounded !== lastDateIndexRef.current) {
+      lastDateIndexRef.current = bounded;
+      const target = dateOptions[bounded];
+      if (target) {
+        void selectDate(target, true);
+      }
+    }
+  };
+
+  const handleTimeWheelScroll = (offsetY: number) => {
+    const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
+    const bounded = Math.max(0, Math.min(timeOptions.length - 1, index));
+    if (bounded !== lastTimeIndexRef.current) {
+      lastTimeIndexRef.current = bounded;
+      const target = timeOptions[bounded];
+      if (target) {
+        void selectTime(target, true);
+      }
+    }
+  };
 
   const addTask = () => {
     const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(form.time);
@@ -835,12 +933,12 @@ export default function App() {
 
   const renderCalendar = () => (
     <>
-      <Text style={styles.title}>{t.calendarTitle}</Text>
-      <Text style={styles.subtitle}>{t.subtitle}</Text>
+      <Text style={[styles.title, { color: c.textPrimary }]}>{t.calendarTitle}</Text>
+      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{t.subtitle}</Text>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <View style={styles.workdayHeaderRow}>
-          <Text style={styles.cardTitle}>{t.workDay}</Text>
+          <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.workDay}</Text>
           <View
             style={[
               styles.statusBadge,
@@ -894,8 +992,8 @@ export default function App() {
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.currentTask}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.currentTask}</Text>
         {currentTask ? (
           <>
             <Text style={styles.entryTask}>{currentTask.date} {currentTask.time}</Text>
@@ -919,8 +1017,8 @@ export default function App() {
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.nextTask}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.nextTask}</Text>
         {nextTask ? (
           <>
             <Text style={styles.entryTask}>{nextTask.date} {nextTask.time}</Text>
@@ -932,7 +1030,7 @@ export default function App() {
         )}
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <View style={styles.monthHeaderRow}>
           <Pressable
             style={styles.monthNavButton}
@@ -940,7 +1038,7 @@ export default function App() {
           >
             <Text style={styles.monthNavText}>{'<'}</Text>
           </Pressable>
-          <Text style={styles.cardTitle}>{monthLabel}</Text>
+          <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{monthLabel}</Text>
           <Pressable
             style={styles.monthNavButton}
             onPress={() => setDisplayedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
@@ -962,20 +1060,22 @@ export default function App() {
                 onPress={() => {
                   void selectDate(cell.date);
                 }}
-                style={[styles.dayCell, !cell.inMonth && styles.dayCellMuted, selected && styles.dayCellSelected]}
+                style={[styles.dayCell, !cell.inMonth && styles.dayCellMuted]}
               >
-                <Text style={[styles.dayCellText, !cell.inMonth && styles.dayCellTextMuted, selected && styles.dayCellTextSelected]}>
-                  {cell.day}
-                </Text>
-                {hasTasksOnDay(cell.date) && <View style={styles.dayDot} />}
+                <View style={[styles.dayCellInner, selected && styles.dayCellSelected]}>
+                  <Text style={[styles.dayCellText, !cell.inMonth && styles.dayCellTextMuted, selected && styles.dayCellTextSelected]}>
+                    {cell.day}
+                  </Text>
+                  {hasTasksOnDay(cell.date) && <View style={styles.dayDot} />}
+                </View>
               </Pressable>
             );
           })}
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.addTask}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.addTask}</Text>
         <Text style={styles.menuSubtitle}>{t.selectDay}: {formatReadableDate(form.date)}</Text>
         <Pressable style={styles.secondaryButton} onPress={() => setShowDatePicker((prev) => !prev)}>
           <Text style={styles.secondaryButtonText}>{t.openDatePicker}</Text>
@@ -986,17 +1086,14 @@ export default function App() {
               ref={dateWheelRef}
               data={dateOptions}
               keyExtractor={(item) => item}
-              getItemLayout={(_, index) => ({ length: 44, offset: 44 * index, index })}
+              getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
               showsVerticalScrollIndicator={false}
-              snapToInterval={44}
+              snapToInterval={WHEEL_ITEM_HEIGHT}
               decelerationRate="fast"
-              onMomentumScrollEnd={(event) => {
-                const index = Math.round(event.nativeEvent.contentOffset.y / 44);
-                const target = dateOptions[Math.max(0, Math.min(dateOptions.length - 1, index))];
-                if (target) {
-                  void selectDate(target);
-                }
-              }}
+              contentContainerStyle={styles.wheelContent}
+              scrollEventThrottle={16}
+              onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
               renderItem={({ item }) => {
                 const selected = item === form.date;
                 return (
@@ -1013,14 +1110,43 @@ export default function App() {
                 );
               }}
             />
+            <View pointerEvents="none" style={styles.wheelCenterBand} />
           </View>
         )}
-        <TextInput
-          style={styles.input}
-          value={form.time}
-          onChangeText={(text) => updateField('time', text)}
-          placeholder={t.timePlaceholder}
-        />
+        <Pressable style={styles.secondaryButton} onPress={() => setShowTimePicker((prev) => !prev)}>
+          <Text style={styles.secondaryButtonText}>{t.openTimePicker}: {form.time}</Text>
+        </Pressable>
+        {showTimePicker && (
+          <View style={styles.timeWheelContainer}>
+            <FlatList
+              ref={timeWheelRef}
+              data={timeOptions}
+              keyExtractor={(item) => item}
+              getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
+              showsVerticalScrollIndicator={false}
+              snapToInterval={WHEEL_ITEM_HEIGHT}
+              decelerationRate="fast"
+              contentContainerStyle={styles.wheelContent}
+              scrollEventThrottle={16}
+              onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
+              renderItem={({ item }) => {
+                const selected = item === form.time;
+                return (
+                  <Pressable
+                    style={[styles.timeWheelItem, selected && styles.timeWheelItemSelected]}
+                    onPress={() => {
+                      void selectTime(item);
+                    }}
+                  >
+                    <Text style={[styles.timeWheelText, selected && styles.timeWheelTextSelected]}>{item}</Text>
+                  </Pressable>
+                );
+              }}
+            />
+            <View pointerEvents="none" style={styles.wheelCenterBand} />
+          </View>
+        )}
         <TextInput
           style={styles.input}
           value={form.project}
@@ -1045,8 +1171,8 @@ export default function App() {
         </Pressable>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.tasksForDay} {form.date}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.tasksForDay} {form.date}</Text>
         <FlatList
           data={tasksForDay}
           keyExtractor={(item) => item.id}
@@ -1081,7 +1207,7 @@ export default function App() {
         />
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Pressable style={styles.secondaryButton} onPress={() => setShowGeneralTasks((prev) => !prev)}>
           <Text style={styles.secondaryButtonText}>{t.generalTasks}</Text>
         </Pressable>
@@ -1106,11 +1232,11 @@ export default function App() {
 
   const renderReport = () => (
     <>
-      <Text style={styles.title}>{t.menuReport}</Text>
-      <Text style={styles.subtitle}>{t.subtitle}</Text>
+      <Text style={[styles.title, { color: c.textPrimary }]}>{t.menuReport}</Text>
+      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{t.subtitle}</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.workDay}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.workDay}</Text>
         <Text style={styles.entryNotes}>{t.workTime}: {formatDuration(dayStats.workMs)}</Text>
         <Text style={styles.entryNotes}>{t.breakTime}: {formatDuration(dayStats.breakMs)}</Text>
         <Text style={styles.entryNotes}>{t.netTime}: {formatDuration(dayStats.netMs)}</Text>
@@ -1134,15 +1260,15 @@ export default function App() {
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.menuReport}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.menuReport}</Text>
         <Pressable style={styles.secondaryButton} onPress={exportCsv}>
           <Text style={styles.secondaryButtonText}>{t.exportCsv}</Text>
         </Pressable>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.topTasks}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.topTasks}</Text>
         <FlatList
           data={topTasks}
           keyExtractor={(item) => `top-${item.id}`}
@@ -1161,8 +1287,8 @@ export default function App() {
         />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.allTasks}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.allTasks}</Text>
         <FlatList
           data={allTasks}
           keyExtractor={(item) => item.id}
@@ -1182,10 +1308,10 @@ export default function App() {
 
   const renderSettings = () => (
     <>
-      <Text style={styles.title}>{t.menuSettings}</Text>
-      <Text style={styles.subtitle}>{t.subtitle}</Text>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.language}</Text>
+      <Text style={[styles.title, { color: c.textPrimary }]}>{t.menuSettings}</Text>
+      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{t.subtitle}</Text>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.language}</Text>
         <View style={styles.languageButtons}>
           {(['uk', 'en', 'ro'] as Language[]).map((lang) => (
             <Pressable
@@ -1200,32 +1326,64 @@ export default function App() {
           ))}
         </View>
       </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.theme}</Text>
+        <View style={styles.languageButtons}>
+          {(['light', 'dark'] as ThemeMode[]).map((mode) => (
+            <Pressable
+              key={mode}
+              onPress={() => setThemeMode(mode)}
+              style={[styles.languageButton, themeMode === mode && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, themeMode === mode && styles.languageButtonTextActive]}>
+                {mode === 'light' ? t.themeLight : t.themeDark}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
     </>
   );
 
   const renderTabBar = () => {
-    const tabs: Array<{ key: Screen; icon: keyof typeof Ionicons.glyphMap; label: string }> = [
-      { key: 'calendar', icon: 'calendar-outline', label: t.menuCalendar },
-      { key: 'report', icon: 'bar-chart-outline', label: t.menuReport },
-      { key: 'settings', icon: 'settings-outline', label: t.menuSettings },
+    const tabs: Array<{ key: Screen; label: string }> = [
+      { key: 'calendar', label: t.menuCalendar },
+      { key: 'report', label: t.menuReport },
+      { key: 'settings', label: t.menuSettings },
     ];
     return (
       <View style={styles.tabBarWrap}>
-        <View style={styles.tabBar}>
+        <View style={[styles.tabBar, { backgroundColor: c.tabBg, borderColor: c.tabBorder }]}>
           {tabs.map((tab) => {
             const active = screen === tab.key;
+            const iconName =
+              tab.key === 'calendar'
+                ? active
+                  ? 'calendar'
+                  : 'calendar-outline'
+                : tab.key === 'report'
+                  ? active
+                    ? 'bar-chart'
+                    : 'bar-chart-outline'
+                  : active
+                    ? 'settings'
+                    : 'settings-outline';
             return (
               <Pressable
                 key={tab.key}
                 onPress={() => setScreen(tab.key)}
-                style={[styles.tabItem, active && styles.tabItemActive]}
+                style={[styles.tabItem, active && styles.tabItemActive, active && { backgroundColor: c.tabActiveBg }]}
               >
-                <Ionicons
-                  name={tab.icon}
-                  size={20}
-                  color={active ? '#1d4ed8' : '#6c7389'}
-                />
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+                <View style={[styles.tabIconWrap, active && styles.tabIconWrapActive]}>
+                  <Ionicons
+                    name={iconName}
+                    size={20}
+                    color={active ? c.tabIconActive : c.tabIcon}
+                  />
+                </View>
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive, { color: active ? c.tabIconActive : c.tabIcon }]}>
+                  {tab.label}
+                </Text>
               </Pressable>
             );
           })}
@@ -1235,9 +1393,9 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={styles.safeArea}>
-        <StatusBar style="dark" />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: c.appBg }]}>
+      <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={[styles.safeArea, { backgroundColor: c.appBg }]}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <ScrollView contentContainerStyle={styles.scrollContainer}>
           {screen === 'calendar' && renderCalendar()}
           {screen === 'report' && renderReport()}
@@ -1394,31 +1552,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   dateWheelContainer: {
-    marginTop: 8,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#d7deef',
-    borderRadius: 12,
+    borderColor: '#dbe3f5',
+    borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: '#f8faff',
-    maxHeight: 220,
+    backgroundColor: '#f9fbff',
+    height: 200,
+  },
+  wheelContent: {
+    paddingVertical: WHEEL_ITEM_HEIGHT * 2,
+  },
+  wheelCenterBand: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: WHEEL_ITEM_HEIGHT * 2,
+    height: WHEEL_ITEM_HEIGHT,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#b8c8ef',
+    backgroundColor: 'rgba(232, 240, 255, 0.45)',
   },
   dateWheelItem: {
-    height: 44,
+    height: WHEEL_ITEM_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e8eefb',
+    paddingHorizontal: 10,
   },
   dateWheelItemSelected: {
-    backgroundColor: '#e8f0ff',
+    backgroundColor: '#ecf3ff',
   },
   dateWheelText: {
-    color: '#2c3650',
-    fontSize: 14,
+    color: '#36415f',
+    fontSize: 13,
     fontWeight: '600',
   },
   dateWheelTextSelected: {
+    color: '#1e40af',
+    fontWeight: '700',
+  },
+  timeWheelContainer: {
+    marginTop: 6,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#dbe3f5',
+    borderRadius: 10,
+    backgroundColor: '#f9fbff',
+    overflow: 'hidden',
+    height: 200,
+  },
+  timeWheelItem: {
+    height: WHEEL_ITEM_HEIGHT,
+    borderRadius: 9,
+    borderWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  timeWheelItemSelected: {
+    backgroundColor: '#ecf3ff',
+  },
+  timeWheelText: {
+    color: '#36415f',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  timeWheelTextSelected: {
     color: '#1e40af',
     fontWeight: '700',
   },
@@ -1522,7 +1723,6 @@ const styles = StyleSheet.create({
   },
   weekdaysRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 8,
   },
   weekdayText: {
@@ -1535,11 +1735,16 @@ const styles = StyleSheet.create({
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    marginHorizontal: -2,
   },
   dayCell: {
-    width: '13.2%',
+    width: '14.2857%',
     minHeight: 42,
+    paddingHorizontal: 2,
+    paddingVertical: 3,
+  },
+  dayCellInner: {
+    flex: 1,
     borderWidth: 1,
     borderColor: '#dce2ef',
     borderRadius: 10,
@@ -1660,6 +1865,16 @@ const styles = StyleSheet.create({
   },
   tabItemActive: {
     backgroundColor: '#eaf1ff',
+  },
+  tabIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconWrapActive: {
+    backgroundColor: '#dbe8ff',
   },
   tabLabel: {
     marginTop: 4,
