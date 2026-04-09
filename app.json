@@ -12,14 +12,20 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "scheme": "dayflow",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "DayFlow can add a task as a calendar event when you choose.",
+        "NSRemindersUsageDescription": "DayFlow can optionally use reminders together with calendar events."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "permissions": ["READ_CALENDAR", "WRITE_CALENDAR"],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

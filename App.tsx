@@ -9,7 +9,9 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as Notifications from 'expo-notifications';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as Calendar from 'expo-calendar';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { addCalendarDays, dateInReportScope, parseRepeatRule, type RepeatRule, type ReportScope } from './lib/dayflow-utils';
 import {
   Animated,
   Alert,
@@ -45,6 +47,8 @@ type TaskEntry = {
   createdAt: string;
   trackedMs: number;
   trackingStartedAt?: string;
+  repeatRule?: RepeatRule;
+  repeatSeriesId?: string;
 };
 
 type NewTask = {
@@ -54,6 +58,7 @@ type NewTask = {
   notes: string;
   tag: string;
   priority: Priority;
+  repeatRule: RepeatRule;
 };
 type Priority = 'low' | 'medium' | 'high';
 type PriorityFilter = Priority | 'all';
@@ -90,10 +95,14 @@ const TASK_TEMPLATES_KEY = 'work-report-task-templates-v1';
 const STATUS_FILTER_KEY = 'work-report-status-filter-v1';
 const REMINDER_LEAD_KEY = 'work-report-reminder-lead-v1';
 const LOCK_ENABLED_KEY = 'work-report-lock-enabled-v1';
+const REPORT_SCOPE_KEY = 'work-report-report-scope-v1';
+const IMPORT_REVERT_KEY = 'work-report-import-revert-v1';
+const ONBOARDING_KEY = 'work-report-onboarding-v1';
+const PRO_UNLOCKED_KEY = 'work-report-pro-v1';
 const DEFAULT_TASK_TEMPLATES: Record<Language, string[]> = {
   uk: ['Щоденний звіт', 'Перевірка коду', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
   en: ['Daily report', 'Code review', 'Team meeting', 'Fix bug', 'Task planning'],
-  ro: ['Raport zilnic', 'Revizuire cod', 'Sedinta cu echipa', 'Rezolva bug', 'Planificare task-uri'],
+  ro: ['Raport zilnic', 'Revizuire cod', 'Întâlnire cu echipa', 'Corectare bug', 'Planificare sarcini'],
 };
 const formatLocalDate = (date: Date) => {
   const y = date.getFullYear();
@@ -254,6 +263,48 @@ const translations: Record<
     fileSaved: string;
     exportError: string;
     csvHeader: string;
+    repeatLabel: string;
+    repeatNone: string;
+    repeatDaily: string;
+    repeatWeekly: string;
+    reportScopeLabel: string;
+    reportScopeToday: string;
+    reportScopeWeek: string;
+    reportScopeMonth: string;
+    reportPeriodHint: string;
+    revertImport: string;
+    revertImportDone: string;
+    noImportToRevert: string;
+    onboardingNext: string;
+    onboardingSkip: string;
+    onboardingDone: string;
+    onboardingTitle1: string;
+    onboardingBody1: string;
+    onboardingTitle2: string;
+    onboardingBody2: string;
+    onboardingTitle3: string;
+    onboardingBody3: string;
+    emptyTasksHint: string;
+    emptyInboxHint: string;
+    addToCalendar: string;
+    calendarPermissionDenied: string;
+    calendarEventAdded: string;
+    calendarEventError: string;
+    proTitle: string;
+    proSubtitle: string;
+    proUnlockPreview: string;
+    proUnlocked: string;
+    proMonthPdfLocked: string;
+    widgetsTitle: string;
+    widgetsBody: string;
+    locationRemindersTitle: string;
+    locationRemindersBody: string;
+    tabCalendarHint: string;
+    tabReportHint: string;
+    tabSettingsHint: string;
+    autoBackupHint: string;
+    taskRepeatBadgeDaily: string;
+    taskRepeatBadgeWeekly: string;
   }
 > = {
   uk: {
@@ -379,10 +430,52 @@ const translations: Record<
     fileSaved: 'Файл збережено',
     exportError: 'Не вдалося зробити експорт.',
     csvHeader: 'Дата,Час,Завдання,Тег,Пріоритет,Коментар,Статус,Час завдання',
+    repeatLabel: 'Повторення',
+    repeatNone: 'Без повтору',
+    repeatDaily: 'Щодня',
+    repeatWeekly: 'Щотижня',
+    reportScopeLabel: 'Період звіту',
+    reportScopeToday: 'Сьогодні',
+    reportScopeWeek: 'Тиждень',
+    reportScopeMonth: 'Місяць',
+    reportPeriodHint: 'Нижче — задачі за обраний період.',
+    revertImport: 'Скасувати останній імпорт',
+    revertImportDone: 'Стан до імпорту відновлено.',
+    noImportToRevert: 'Немає знімка для відкату.',
+    onboardingNext: 'Далі',
+    onboardingSkip: 'Пропустити',
+    onboardingDone: 'Почати',
+    onboardingTitle1: 'Календар і робочий день',
+    onboardingBody1: 'Плануй задачі на день, відстежуй час і таймери.',
+    onboardingTitle2: 'Звіт і експорт',
+    onboardingBody2: 'Статистика за період, CSV і PDF.',
+    onboardingTitle3: 'Вхідні й повторення',
+    onboardingBody3: 'Ідеї — у вхідних; після «Завершити» щоденні та щотижневі задачі зʼявляються знову.',
+    emptyTasksHint: 'Обери дату й натисни «Додати завдання».',
+    emptyInboxHint: 'Введи текст і «У вхідні», щоб не губити думки.',
+    addToCalendar: 'У календар',
+    calendarPermissionDenied: 'Немає доступу до календаря.',
+    calendarEventAdded: 'Подію додано.',
+    calendarEventError: 'Не вдалося створити подію.',
+    proTitle: 'DayFlow Pro',
+    proSubtitle: 'PDF за місяць і майбутні віджети в оновленнях App Store.',
+    proUnlockPreview: 'Увімкнути Pro (перегляд)',
+    proUnlocked: 'Pro увімкнено',
+    proMonthPdfLocked: 'PDF за місяць — у DayFlow Pro. Увімкни в налаштуваннях або обери день чи тиждень.',
+    widgetsTitle: 'Віджети',
+    widgetsBody: 'Після релізу в App Store можна буде додати віджет на головний екран через меню iOS.',
+    locationRemindersTitle: 'Нагадування за місцем',
+    locationRemindersBody: 'Геозони потребують окремої збірки — у майбутньому оновленні.',
+    tabCalendarHint: 'Календар, задачі, робочий день',
+    tabReportHint: 'Звіт і експорт',
+    tabSettingsHint: 'Мова, резервні копії, безпека',
+    autoBackupHint: 'Копія dayflow-autobackup.json у папці застосунку; через «Поділитися» можна зберегти в iCloud у Файлах.',
+    taskRepeatBadgeDaily: 'щодня',
+    taskRepeatBadgeWeekly: 'щотижня',
   },
   en: {
     title: 'DayFlow',
-    subtitle: 'Daily task planner',
+    subtitle: 'Daily tasks and reports',
     menuTitle: 'Sections',
     menuSubtitle: 'Navigation',
     menuCalendar: 'Calendar',
@@ -403,23 +496,23 @@ const translations: Record<
     priorityLow: 'Low',
     priorityMedium: 'Medium',
     priorityHigh: 'High',
-    addToInbox: 'To inbox',
+    addToInbox: 'Add to inbox',
     inboxTitle: 'Inbox',
-    noInbox: 'Inbox is empty.',
+    noInbox: 'Nothing in your inbox yet.',
     planFromInbox: 'Schedule',
     exportDaySummary: 'Export day summary',
     exportJson: 'Export JSON',
     importJson: 'Import JSON',
     backupTitle: 'Backup',
-    taskPresets: 'Task presets',
-    taskPresetPlaceholder: 'New task preset',
-    addPreset: 'Add preset',
-    noPresets: 'No presets yet.',
+    taskPresets: 'Task templates',
+    taskPresetPlaceholder: 'New task template',
+    addPreset: 'Add template',
+    noPresets: 'No templates yet.',
     editDoneComment: 'Comment',
     commentTitle: 'Comment for completed task',
     commentSave: 'Save',
     commentCancel: 'Cancel',
-    searchPlaceholder: 'Search by task/comment/tag',
+    searchPlaceholder: 'Search by title, notes, or tag',
     tagPlaceholder: 'Tag (e.g. dev, docs)',
     filterArchive: 'Archive',
     filterInboxOnly: 'Inbox only',
@@ -431,10 +524,10 @@ const translations: Record<
     productivityTitle: 'Productivity',
     reminderLeadTime: 'Reminder lead time',
     securityTitle: 'Security',
-    securityFaceIdOn: 'Face ID On',
+    securityFaceIdOn: 'Face ID enabled',
     securityUnlockNow: 'Unlock now',
     lockTitle: 'DayFlow Locked',
-    lockBody: 'Use Face ID / biometrics to continue.',
+    lockBody: 'Use Face ID or biometrics to continue.',
     lockAction: 'Unlock',
     undoApplied: 'Action applied',
     undoAction: 'Undo',
@@ -481,8 +574,8 @@ const translations: Record<
     taskTime: 'Task time',
     exportCsv: 'Export CSV',
     generalTasks: 'General tasks',
-    noGeneralTasks: 'No scheduled unfinished tasks.',
-    tasksForDay: 'Tasks for day',
+    noGeneralTasks: 'No unfinished scheduled tasks.',
+    tasksForDay: 'Tasks for the day',
     noTasksForDay: 'No tasks for this day yet.',
     allTasks: 'All tasks',
     totalTasks: 'Total',
@@ -503,10 +596,52 @@ const translations: Record<
     fileSaved: 'File saved',
     exportError: 'Failed to export.',
     csvHeader: 'Date,Time,Task,Tag,Priority,Notes,Status,Task Time',
+    repeatLabel: 'Repeat',
+    repeatNone: 'None',
+    repeatDaily: 'Daily',
+    repeatWeekly: 'Weekly',
+    reportScopeLabel: 'Report period',
+    reportScopeToday: 'Today',
+    reportScopeWeek: 'Week',
+    reportScopeMonth: 'Month',
+    reportPeriodHint: 'Tasks below match the selected period.',
+    revertImport: 'Undo last import',
+    revertImportDone: 'Restored state from before import.',
+    noImportToRevert: 'No import snapshot to restore.',
+    onboardingNext: 'Next',
+    onboardingSkip: 'Skip',
+    onboardingDone: 'Get started',
+    onboardingTitle1: 'Calendar & work day',
+    onboardingBody1: 'Plan tasks, track work time and timers.',
+    onboardingTitle2: 'Reports & export',
+    onboardingBody2: 'Stats by period, CSV and PDF export.',
+    onboardingTitle3: 'Inbox & repeats',
+    onboardingBody3: 'Capture ideas in inbox; daily/weekly tasks respawn after you complete them.',
+    emptyTasksHint: 'Pick a date and tap Add task.',
+    emptyInboxHint: 'Type a task and use Add to inbox for quick capture.',
+    addToCalendar: 'Add to calendar',
+    calendarPermissionDenied: 'Calendar access was denied.',
+    calendarEventAdded: 'Event added to your calendar.',
+    calendarEventError: 'Could not create the event.',
+    proTitle: 'DayFlow Pro',
+    proSubtitle: 'Monthly PDF and future home-screen widgets in App Store builds.',
+    proUnlockPreview: 'Enable Pro (preview)',
+    proUnlocked: 'Pro enabled',
+    proMonthPdfLocked: 'Monthly PDF is a DayFlow Pro feature. Enable it in Settings or pick Today/Week.',
+    widgetsTitle: 'Widgets',
+    widgetsBody: 'After the App Store release you can add a “next task” widget from the iOS widget gallery.',
+    locationRemindersTitle: 'Location reminders',
+    locationRemindersBody: 'Geofencing needs a dedicated native build; planned for a future update.',
+    tabCalendarHint: 'Calendar, tasks, work day',
+    tabReportHint: 'Reports and export',
+    tabSettingsHint: 'Language, backup, security',
+    autoBackupHint: 'Latest snapshot is also saved as dayflow-autobackup.json in the app folder; share to Files / iCloud if you like.',
+    taskRepeatBadgeDaily: 'daily',
+    taskRepeatBadgeWeekly: 'weekly',
   },
   ro: {
     title: 'DayFlow',
-    subtitle: 'Planificator zilnic de sarcini',
+    subtitle: 'Sarcini și rapoarte zilnice',
     menuTitle: 'Secțiuni',
     menuSubtitle: 'Navigare',
     menuCalendar: 'Calendar',
@@ -516,42 +651,42 @@ const translations: Record<
     language: 'Limbă',
     theme: 'Temă',
     sound: 'Sunet',
-    haptics: 'Vibratie',
-    notifications: 'Notificari',
+    haptics: 'Vibrație',
+    notifications: 'Notificări',
     appMode: 'Mod',
     testNotification: 'Test notificare',
-    testNotificationBody: 'Test notificare DayFlow',
+    testNotificationBody: 'Test de notificare DayFlow',
     priority: 'Prioritate',
     priorityFilter: 'Filtru prioritate',
     priorityAll: 'Toate',
-    priorityLow: 'Scazut',
+    priorityLow: 'Scăzut',
     priorityMedium: 'Mediu',
     priorityHigh: 'Ridicat',
-    addToInbox: 'In inbox',
-    inboxTitle: 'Inbox',
-    noInbox: 'Inbox este gol.',
-    planFromInbox: 'Planifica',
-    exportDaySummary: 'Export rezumat zi',
-    exportJson: 'Export JSON',
-    importJson: 'Import JSON',
+    addToInbox: 'La intrări',
+    inboxTitle: 'Intrări',
+    noInbox: 'Intrările sunt goale.',
+    planFromInbox: 'Programează',
+    exportDaySummary: 'Exportă rezumatul zilei',
+    exportJson: 'Exportă JSON',
+    importJson: 'Importă JSON',
     backupTitle: 'Copie de rezervă',
-    taskPresets: 'Preseturi task',
-    taskPresetPlaceholder: 'Preset nou task',
-    addPreset: 'Adauga preset',
-    noPresets: 'Nu exista preseturi.',
+    taskPresets: 'Șabloane de sarcini',
+    taskPresetPlaceholder: 'Șablon nou de sarcină',
+    addPreset: 'Adaugă șablon',
+    noPresets: 'Încă nu ai șabloane.',
     editDoneComment: 'Comentariu',
-    commentTitle: 'Comentariu pentru task finalizat',
-    commentSave: 'Salveaza',
-    commentCancel: 'Anuleaza',
-    searchPlaceholder: 'Caută după task/comentariu/tag',
-    tagPlaceholder: 'Tag (ex: dev, docs)',
+    commentTitle: 'Comentariu la sarcina finalizată',
+    commentSave: 'Salvează',
+    commentCancel: 'Anulează',
+    searchPlaceholder: 'Caută după titlu, comentariu sau etichetă',
+    tagPlaceholder: 'Etichetă (ex.: dev, docs)',
     filterArchive: 'Arhivă',
-    filterInboxOnly: 'Doar inbox',
+    filterInboxOnly: 'Doar intrări',
     statusAll: 'Toate',
     periodToday: 'Astăzi',
     periodWeek: 'Săptămână',
     periodMonth: 'Lună',
-    exportPdf: 'Export PDF',
+    exportPdf: 'Exportă PDF',
     productivityTitle: 'Productivitate',
     reminderLeadTime: 'Timp înainte de notificare',
     securityTitle: 'Securitate',
@@ -562,8 +697,8 @@ const translations: Record<
     lockAction: 'Deblochează',
     undoApplied: 'Acțiune aplicată',
     undoAction: 'Anulează',
-    notifInProgressTitle: 'DayFlow: task în desfășurare',
-    notifReminderTitle: 'Reminder DayFlow',
+    notifInProgressTitle: 'DayFlow: sarcină în desfășurare',
+    notifReminderTitle: 'Memento DayFlow',
     notifInMinutes: 'Peste {minutes} minute: {task}',
     notifStartNow: 'Începe acum: {task}',
     unlockPrompt: 'Deblochează DayFlow',
@@ -613,7 +748,7 @@ const translations: Record<
     pendingTasks: 'În lucru',
     doneTasks: 'Finalizate',
     productiveTime: 'Timp productiv',
-    idleTime: 'Timp inactiv',
+    idleTime: 'Timp de inactivitate',
     topTasks: 'Top 3 sarcini după timp',
     delete: 'Șterge',
     error: 'Eroare',
@@ -626,7 +761,49 @@ const translations: Record<
     done: 'Gata',
     fileSaved: 'Fișier salvat',
     exportError: 'Exportul a eșuat.',
-    csvHeader: 'Data,Ora,Sarcină,Tag,Prioritate,Comentariu,Status,Timp sarcină',
+    csvHeader: 'Data,Ora,Sarcină,Etichetă,Prioritate,Comentariu,Status,Timp sarcină',
+    repeatLabel: 'Repetare',
+    repeatNone: 'Fără',
+    repeatDaily: 'Zilnic',
+    repeatWeekly: 'Săptămânal',
+    reportScopeLabel: 'Perioadă raport',
+    reportScopeToday: 'Astăzi',
+    reportScopeWeek: 'Săptămână',
+    reportScopeMonth: 'Lună',
+    reportPeriodHint: 'Mai jos sunt sarcinile din perioada aleasă.',
+    revertImport: 'Anulează ultimul import',
+    revertImportDone: 'Starea de dinainte de import a fost restaurată.',
+    noImportToRevert: 'Nu există punct de restaurare.',
+    onboardingNext: 'Înainte',
+    onboardingSkip: 'Omite',
+    onboardingDone: 'Începe',
+    onboardingTitle1: 'Calendar și zi de lucru',
+    onboardingBody1: 'Planifică sarcini și urmărește timpul.',
+    onboardingTitle2: 'Raport și export',
+    onboardingBody2: 'Statistici pe perioadă, CSV și PDF.',
+    onboardingTitle3: 'Intrări și repetări',
+    onboardingBody3: 'Idei în intrări; sarcinile zilnice/săptămânale reapar după finalizare.',
+    emptyTasksHint: 'Alege data și apasă Adaugă sarcină.',
+    emptyInboxHint: 'Scrie sarcina și folosește La intrări.',
+    addToCalendar: 'În calendar',
+    calendarPermissionDenied: 'Fără acces la calendar.',
+    calendarEventAdded: 'Eveniment adăugat.',
+    calendarEventError: 'Nu s-a putut crea evenimentul.',
+    proTitle: 'DayFlow Pro',
+    proSubtitle: 'PDF lunar și widget-uri viitoare în versiunea App Store.',
+    proUnlockPreview: 'Activează Pro (previzualizare)',
+    proUnlocked: 'Pro activ',
+    proMonthPdfLocked: 'PDF lunar e în DayFlow Pro. Activează din setări sau alege Astăzi/Săptămână.',
+    widgetsTitle: 'Widget-uri',
+    widgetsBody: 'După lansarea în App Store poți adăuga un widget din galeria iOS.',
+    locationRemindersTitle: 'Memento după locație',
+    locationRemindersBody: 'Geofencing necesită o build nativă dedicată — într-un update viitor.',
+    tabCalendarHint: 'Calendar, sarcini, zi de lucru',
+    tabReportHint: 'Raport și export',
+    tabSettingsHint: 'Limbă, backup, securitate',
+    autoBackupHint: 'Copie dayflow-autobackup.json în folderul aplicației; partajare către Fișiere / iCloud.',
+    taskRepeatBadgeDaily: 'zilnic',
+    taskRepeatBadgeWeekly: 'săptămânal',
   },
 };
 
@@ -637,6 +814,7 @@ const INITIAL_FORM: NewTask = {
   notes: '',
   tag: '',
   priority: 'medium',
+  repeatRule: 'none',
 };
 
 const parseDateTime = (entry: Pick<TaskEntry, 'date' | 'time'>) => new Date(`${entry.date}T${entry.time}:00`);
@@ -673,7 +851,7 @@ function TabGlyph({
 }) {
   if (type === 'calendar') {
     return (
-      <View style={[styles.glyphCalendar, { borderColor: color }]}>
+      <View accessible={false} style={[styles.glyphCalendar, { borderColor: color }]}>
         <View style={[styles.glyphCalendarTop, { backgroundColor: color }]} />
         <View style={styles.glyphCalendarDotsRow}>
           <View style={[styles.glyphDot, { backgroundColor: color }]} />
@@ -686,7 +864,7 @@ function TabGlyph({
 
   if (type === 'report') {
     return (
-      <View style={styles.glyphReportRow}>
+      <View accessible={false} style={styles.glyphReportRow}>
         <View style={[styles.glyphBar, { height: 8, backgroundColor: color, opacity: active ? 1 : 0.7 }]} />
         <View style={[styles.glyphBar, { height: 12, backgroundColor: color, opacity: active ? 1 : 0.8 }]} />
         <View style={[styles.glyphBar, { height: 16, backgroundColor: color }]} />
@@ -695,7 +873,7 @@ function TabGlyph({
   }
 
   return (
-    <View style={[styles.glyphGear, { borderColor: color }]}>
+    <View accessible={false} style={[styles.glyphGear, { borderColor: color }]}>
       <View style={[styles.glyphGearCore, { backgroundColor: color }]} />
     </View>
   );
@@ -729,6 +907,10 @@ export default function App() {
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [reportScope, setReportScope] = useState<ReportScope>('today');
+  const [onboardingComplete, setOnboardingComplete] = useState(true);
+  const [onboardingPage, setOnboardingPage] = useState(0);
+  const [isProUnlocked, setIsProUnlocked] = useState(false);
   const t = translations[language];
   const isDark = themeMode === 'dark';
   const isColorful = themeMode === 'colorful';
@@ -1137,6 +1319,9 @@ export default function App() {
           savedStatusFilter,
           savedReminderLead,
           savedLockEnabled,
+          savedReportScope,
+          savedOnboarding,
+          savedPro,
         ] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEY),
           AsyncStorage.getItem(LANGUAGE_KEY),
@@ -1150,6 +1335,9 @@ export default function App() {
           AsyncStorage.getItem(STATUS_FILTER_KEY),
           AsyncStorage.getItem(REMINDER_LEAD_KEY),
           AsyncStorage.getItem(LOCK_ENABLED_KEY),
+          AsyncStorage.getItem(REPORT_SCOPE_KEY),
+          AsyncStorage.getItem(ONBOARDING_KEY),
+          AsyncStorage.getItem(PRO_UNLOCKED_KEY),
         ]);
         if (raw) {
           const parsed: TaskEntry[] = JSON.parse(raw);
@@ -1172,6 +1360,8 @@ export default function App() {
             createdAt: item.createdAt ?? new Date().toISOString(),
             trackedMs: typeof item.trackedMs === 'number' ? item.trackedMs : 0,
             trackingStartedAt: item.trackingStartedAt,
+            repeatRule: parseRepeatRule(item.repeatRule),
+            repeatSeriesId: typeof item.repeatSeriesId === 'string' ? item.repeatSeriesId : undefined,
           }));
           setEntries(migrated);
         }
@@ -1210,6 +1400,18 @@ export default function App() {
         }
         if (savedLockEnabled === '0' || savedLockEnabled === '1') {
           setLockEnabled(savedLockEnabled === '1');
+        }
+        if (savedReportScope === 'today' || savedReportScope === 'week' || savedReportScope === 'month') {
+          setReportScope(savedReportScope);
+        }
+        if (savedOnboarding === '1') {
+          setOnboardingComplete(true);
+        } else {
+          setOnboardingComplete(false);
+          setOnboardingPage(0);
+        }
+        if (savedPro === '1') {
+          setIsProUnlocked(true);
         }
         if (savedTaskTemplates) {
           const parsedTemplates = JSON.parse(savedTaskTemplates) as Partial<Record<Language, string[]>>;
@@ -1316,16 +1518,20 @@ export default function App() {
       AsyncStorage.setItem(STATUS_FILTER_KEY, statusFilter),
       AsyncStorage.setItem(REMINDER_LEAD_KEY, String(reminderLeadMinutes)),
       AsyncStorage.setItem(LOCK_ENABLED_KEY, lockEnabled ? '1' : '0'),
+      AsyncStorage.setItem(REPORT_SCOPE_KEY, reportScope),
+      AsyncStorage.setItem(PRO_UNLOCKED_KEY, isProUnlocked ? '1' : '0'),
     ]).catch(() => {
       Alert.alert(t.error, t.saveError);
     });
   }, [
     entries,
     hapticsEnabled,
+    isProUnlocked,
     language,
     loading,
     notificationsEnabled,
     priorityFilter,
+    reportScope,
     statusFilter,
     reminderLeadMinutes,
     lockEnabled,
@@ -1337,12 +1543,22 @@ export default function App() {
     workDay,
   ]);
 
-  const summary = useMemo(() => {
-    const scheduled = entries.filter((item) => !item.inbox);
-    const total = scheduled.length;
-    const done = scheduled.filter((item) => item.completed).length;
-    return { total, done, pending: total - done };
-  }, [entries]);
+  useEffect(() => {
+    if (loading || Platform.OS === 'web') {
+      return;
+    }
+    const dir = FileSystem.documentDirectory;
+    if (!dir) {
+      return;
+    }
+    const path = `${dir}dayflow-autobackup.json`;
+    const payload = JSON.stringify({
+      savedAt: new Date().toISOString(),
+      entries,
+      workDay,
+    });
+    void FileSystem.writeAsStringAsync(path, payload, { encoding: FileSystem.EncodingType.UTF8 }).catch(() => {});
+  }, [entries, workDay, loading]);
 
   const scheduledEntries = useMemo(() => entries.filter((item) => !item.inbox), [entries]);
   const inboxEntries = useMemo(
@@ -1620,6 +1836,9 @@ export default function App() {
       Alert.alert(t.validationTitle, t.validationMessage);
       return;
     }
+    const repeatRule = form.repeatRule;
+    const repeatSeriesId =
+      repeatRule !== 'none' ? `series-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined;
     const entry: TaskEntry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: form.date,
@@ -1636,6 +1855,8 @@ export default function App() {
       createdAt: new Date().toISOString(),
       trackedMs: 0,
       trackingStartedAt: undefined,
+      repeatRule: repeatRule === 'none' ? undefined : repeatRule,
+      repeatSeriesId,
     };
     animateNextLayout();
     setEntries((prev) => [entry, ...prev]);
@@ -1924,6 +2145,38 @@ export default function App() {
     });
   };
 
+  const addTaskToDeviceCalendar = async (item: TaskEntry) => {
+    if (Platform.OS === 'web') {
+      Alert.alert(t.error, t.calendarEventError);
+      return;
+    }
+    try {
+      const perm = await Calendar.requestCalendarPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert(t.error, t.calendarPermissionDenied);
+        return;
+      }
+      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const writable = calendars.find((cal) => cal.allowsModifications);
+      const calId = writable?.id ?? calendars[0]?.id;
+      if (!calId) {
+        Alert.alert(t.error, t.calendarEventError);
+        return;
+      }
+      const start = parseDateTime(item);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      await Calendar.createEventAsync(calId, {
+        title: localizedTask(item),
+        startDate: start,
+        endDate: end,
+        notes: [localizedNotes(item), localizedTag(item) ? `#${localizedTag(item)}` : ''].filter(Boolean).join('\n'),
+      });
+      Alert.alert(t.done, t.calendarEventAdded);
+    } catch {
+      Alert.alert(t.error, t.calendarEventError);
+    }
+  };
+
   const unlockWithBiometrics = async () => {
     if (Platform.OS === 'web') {
       setIsUnlocked(true);
@@ -1952,27 +2205,64 @@ export default function App() {
     });
   };
 
+  const spawnNextRepeat = (completedItem: TaskEntry): TaskEntry | null => {
+    const rule = completedItem.repeatRule ?? 'none';
+    if (rule === 'none' || completedItem.inbox) {
+      return null;
+    }
+    const nextDate = rule === 'daily' ? addCalendarDays(completedItem.date, 1) : addCalendarDays(completedItem.date, 7);
+    const seriesId = completedItem.repeatSeriesId ?? completedItem.id;
+    const baseTask = completedItem.task;
+    const baseNotes = completedItem.notes;
+    const baseTag = completedItem.tag;
+    return {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: nextDate,
+      time: completedItem.time,
+      task: baseTask,
+      notes: baseNotes,
+      tag: baseTag,
+      taskI18n: completedItem.taskI18n ? { ...completedItem.taskI18n } : { [language]: baseTask },
+      notesI18n: completedItem.notesI18n ? { ...completedItem.notesI18n } : { [language]: baseNotes },
+      tagI18n: completedItem.tagI18n ? { ...completedItem.tagI18n } : { [language]: baseTag ?? '' },
+      priority: completedItem.priority,
+      inbox: false,
+      completed: false,
+      createdAt: new Date().toISOString(),
+      trackedMs: 0,
+      trackingStartedAt: undefined,
+      repeatRule: rule,
+      repeatSeriesId: seriesId,
+    };
+  };
+
   const markDone = (id: string) => {
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
     animateNextLayout();
-    setEntries((prev) =>
-      {
-        stashUndoSnapshot(prev);
-        return prev.map((item) => {
+    setEntries((prev) => {
+      stashUndoSnapshot(prev);
+      let spawned: TaskEntry | null = null;
+      const mapped = prev.map((item) => {
         if (item.id !== id) {
           return item;
         }
         const extra = item.trackingStartedAt ? Math.max(0, nowMs - new Date(item.trackingStartedAt).getTime()) : 0;
-        return {
+        const updated: TaskEntry = {
           ...item,
           completed: true,
           trackedMs: item.trackedMs + extra,
           trackingStartedAt: undefined,
         };
+        spawned = spawnNextRepeat(updated);
+        return updated;
       });
-      },
-    );
+      const next = spawned ? [...mapped, spawned] : mapped;
+      if (spawned) {
+        setTimeout(() => void scheduleTaskReminders(spawned!), 0);
+      }
+      return next;
+    });
     void stopOngoingTaskNotification();
   };
 
@@ -1980,10 +2270,10 @@ export default function App() {
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
     animateNextLayout();
-    setEntries((prev) =>
-      {
-        stashUndoSnapshot(prev);
-        return prev.map((item) => {
+    setEntries((prev) => {
+      stashUndoSnapshot(prev);
+      let spawned: TaskEntry | null = null;
+      const mapped = prev.map((item) => {
         if (item.id !== id) {
           return item;
         }
@@ -1991,15 +2281,21 @@ export default function App() {
           return { ...item, completed: false };
         }
         const extra = item.trackingStartedAt ? Math.max(0, nowMs - new Date(item.trackingStartedAt).getTime()) : 0;
-        return {
+        const updated: TaskEntry = {
           ...item,
           completed: true,
           trackedMs: item.trackedMs + extra,
           trackingStartedAt: undefined,
         };
+        spawned = spawnNextRepeat(updated);
+        return updated;
       });
-      },
-    );
+      const next = spawned ? [...mapped, spawned] : mapped;
+      if (spawned) {
+        setTimeout(() => void scheduleTaskReminders(spawned!), 0);
+      }
+      return next;
+    });
     void stopOngoingTaskNotification();
   };
 
@@ -2090,11 +2386,11 @@ export default function App() {
   };
 
   const exportCsv = async () => {
-    if (scheduledEntries.length === 0) {
+    if (reportScopedFiltered.length === 0) {
       Alert.alert(t.noDataTitle, t.noDataMessage);
       return;
     }
-    const sorted = [...scheduledEntries].sort((a, b) => {
+    const sorted = [...reportScopedFiltered].sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
     });
@@ -2117,7 +2413,7 @@ export default function App() {
       `"${t.workTime}","${formatDuration(dayStats.workMs)}","","","","",""`,
       `"${t.breakTime}","${formatDuration(dayStats.breakMs)}","","","","",""`,
       `"${t.netTime}","${formatDuration(dayStats.netMs)}","","","","",""`,
-      `"${t.taskTime}","${formatDuration(totalTaskTrackedMs)}","","","","",""`,
+      `"${t.taskTime}","${formatDuration(reportScopedTrackedMs)}","","","","",""`,
       `"${t.productiveTime}","${formatDuration(productiveMs)}","","","","",""`,
       `"${t.idleTime}","${formatDuration(idleMs)}","","","","",""`,
       '',
@@ -2178,6 +2474,10 @@ export default function App() {
   };
 
   const exportPdfReport = async () => {
+    if (reportScope === 'month' && !isProUnlocked && !__DEV__) {
+      Alert.alert(t.proTitle, t.proMonthPdfLocked);
+      return;
+    }
     try {
       const rows = allTasks
         .slice(0, 200)
@@ -2192,7 +2492,7 @@ export default function App() {
         .join('');
       const html = `<!doctype html><html><body style="font-family: -apple-system, Segoe UI, Arial; padding: 20px;">
       <h1>DayFlow ${t.menuReport}</h1>
-      <p>${t.totalTasks}: ${summary.total} | ${t.doneTasks}: ${summary.done} | ${t.pendingTasks}: ${summary.pending}</p>
+      <p>${t.totalTasks}: ${reportSummary.total} | ${t.doneTasks}: ${reportSummary.done} | ${t.pendingTasks}: ${reportSummary.pending}</p>
       <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%;">
       <thead><tr><th>${t.selectDay}</th><th>${t.addTask}</th><th>${t.priority}</th><th>${t.pendingTasks}</th><th>${t.taskTime}</th></tr></thead>
       <tbody>${rows}</tbody></table></body></html>`;
@@ -2223,6 +2523,8 @@ export default function App() {
       statusFilter,
       reminderLeadMinutes,
       lockEnabled,
+      reportScope,
+      isProUnlocked,
     };
     const fileUri = `${FileSystem.cacheDirectory}dayflow-backup-${Date.now()}.json`;
     try {
@@ -2265,7 +2567,28 @@ export default function App() {
         statusFilter?: StatusFilter;
         reminderLeadMinutes?: ReminderLead;
         lockEnabled?: boolean;
+        reportScope?: ReportScope;
+        isProUnlocked?: boolean;
       };
+      await AsyncStorage.setItem(
+        IMPORT_REVERT_KEY,
+        JSON.stringify({
+          entries,
+          workDay,
+          language,
+          themeMode,
+          soundEnabled,
+          hapticsEnabled,
+          notificationsEnabled,
+          priorityFilter,
+          statusFilter,
+          reminderLeadMinutes,
+          lockEnabled,
+          taskTemplates,
+          reportScope,
+          isProUnlocked,
+        }),
+      );
       if (Array.isArray(parsed.entries)) {
         setEntries(
           parsed.entries.map((item) => ({
@@ -2275,6 +2598,8 @@ export default function App() {
                 ? item.priority
                 : 'medium',
             inbox: Boolean(item.inbox),
+            repeatRule: parseRepeatRule(item.repeatRule),
+            repeatSeriesId: typeof item.repeatSeriesId === 'string' ? item.repeatSeriesId : undefined,
           })),
         );
       }
@@ -2341,10 +2666,134 @@ export default function App() {
       if (typeof parsed.lockEnabled === 'boolean') {
         setLockEnabled(parsed.lockEnabled);
       }
+      if (parsed.reportScope === 'today' || parsed.reportScope === 'week' || parsed.reportScope === 'month') {
+        setReportScope(parsed.reportScope);
+      }
+      if (typeof parsed.isProUnlocked === 'boolean') {
+        setIsProUnlocked(parsed.isProUnlocked);
+      }
       Alert.alert(t.done, t.fileSaved);
     } catch {
       Alert.alert(t.error, t.loadError);
     }
+  };
+
+  const revertLastImport = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(IMPORT_REVERT_KEY);
+      if (!raw) {
+        Alert.alert(t.error, t.noImportToRevert);
+        return;
+      }
+      const bundle = JSON.parse(raw) as {
+        entries?: TaskEntry[];
+        workDay?: WorkDayState;
+        language?: Language;
+        themeMode?: ThemeMode;
+        soundEnabled?: boolean;
+        hapticsEnabled?: boolean;
+        notificationsEnabled?: boolean;
+        priorityFilter?: PriorityFilter;
+        taskTemplates?: Partial<Record<Language, string[]>>;
+        statusFilter?: StatusFilter;
+        reminderLeadMinutes?: ReminderLead;
+        lockEnabled?: boolean;
+        reportScope?: ReportScope;
+        isProUnlocked?: boolean;
+      };
+      if (Array.isArray(bundle.entries)) {
+        setEntries(
+          bundle.entries.map((item) => ({
+            ...item,
+            priority:
+              item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
+                ? item.priority
+                : 'medium',
+            inbox: Boolean(item.inbox),
+            repeatRule: parseRepeatRule(item.repeatRule),
+            repeatSeriesId: typeof item.repeatSeriesId === 'string' ? item.repeatSeriesId : undefined,
+          })),
+        );
+      }
+      if (bundle.workDay) {
+        setWorkDay({
+          date: bundle.workDay.date ?? formatLocalDate(new Date()),
+          startedAt: bundle.workDay.startedAt,
+          endedAt: bundle.workDay.endedAt,
+          breaks: Array.isArray(bundle.workDay.breaks) ? bundle.workDay.breaks : [],
+          accumulatedWorkMs:
+            typeof bundle.workDay.accumulatedWorkMs === 'number' ? bundle.workDay.accumulatedWorkMs : 0,
+        });
+      }
+      if (bundle.language === 'uk' || bundle.language === 'en' || bundle.language === 'ro') {
+        setLanguage(bundle.language);
+      }
+      if (bundle.themeMode === 'light' || bundle.themeMode === 'dark' || bundle.themeMode === 'colorful') {
+        setThemeMode(bundle.themeMode);
+      }
+      if (typeof bundle.soundEnabled === 'boolean') {
+        setSoundEnabled(bundle.soundEnabled);
+      }
+      if (typeof bundle.hapticsEnabled === 'boolean') {
+        setHapticsEnabled(bundle.hapticsEnabled);
+      }
+      if (typeof bundle.notificationsEnabled === 'boolean') {
+        setNotificationsEnabled(bundle.notificationsEnabled);
+      }
+      if (
+        bundle.priorityFilter === 'all' ||
+        bundle.priorityFilter === 'low' ||
+        bundle.priorityFilter === 'medium' ||
+        bundle.priorityFilter === 'high'
+      ) {
+        setPriorityFilter(bundle.priorityFilter);
+      }
+      if (bundle.taskTemplates) {
+        setTaskTemplates({
+          uk: Array.isArray(bundle.taskTemplates.uk)
+            ? bundle.taskTemplates.uk.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            : DEFAULT_TASK_TEMPLATES.uk,
+          en: Array.isArray(bundle.taskTemplates.en)
+            ? bundle.taskTemplates.en.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            : DEFAULT_TASK_TEMPLATES.en,
+          ro: Array.isArray(bundle.taskTemplates.ro)
+            ? bundle.taskTemplates.ro.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            : DEFAULT_TASK_TEMPLATES.ro,
+        });
+      }
+      if (
+        bundle.statusFilter === 'all' ||
+        bundle.statusFilter === 'in_progress' ||
+        bundle.statusFilter === 'completed'
+      ) {
+        setStatusFilter(bundle.statusFilter);
+      }
+      if (
+        bundle.reminderLeadMinutes === 5 ||
+        bundle.reminderLeadMinutes === 10 ||
+        bundle.reminderLeadMinutes === 15
+      ) {
+        setReminderLeadMinutes(bundle.reminderLeadMinutes);
+      }
+      if (typeof bundle.lockEnabled === 'boolean') {
+        setLockEnabled(bundle.lockEnabled);
+      }
+      if (bundle.reportScope === 'today' || bundle.reportScope === 'week' || bundle.reportScope === 'month') {
+        setReportScope(bundle.reportScope);
+      }
+      if (typeof bundle.isProUnlocked === 'boolean') {
+        setIsProUnlocked(bundle.isProUnlocked);
+      }
+      Alert.alert(t.done, t.revertImportDone);
+    } catch {
+      Alert.alert(t.error, t.loadError);
+    }
+  };
+
+  const completeOnboarding = async () => {
+    await AsyncStorage.setItem(ONBOARDING_KEY, '1');
+    setOnboardingComplete(true);
+    setOnboardingPage(0);
   };
 
   const matchesSearch = (item: TaskEntry) => {
@@ -2369,6 +2818,30 @@ export default function App() {
       matchesSearch(item) &&
       !inboxOnly,
   );
+  const scopeNow = useMemo(() => new Date(nowTick), [nowTick]);
+  const scheduledInReportScope = useMemo(
+    () => scheduledEntries.filter((e) => dateInReportScope(e.date, reportScope, scopeNow)),
+    [scheduledEntries, reportScope, scopeNow],
+  );
+  const reportScopedFiltered = useMemo(
+    () =>
+      scheduledInReportScope.filter(
+        (item) =>
+          (priorityFilter === 'all' || item.priority === priorityFilter) &&
+          matchesStatus(item) &&
+          matchesSearch(item),
+      ),
+    [scheduledInReportScope, priorityFilter, statusFilter, searchQuery, language],
+  );
+  const reportSummary = useMemo(() => {
+    const total = reportScopedFiltered.length;
+    const done = reportScopedFiltered.filter((item) => item.completed).length;
+    return { total, done, pending: total - done };
+  }, [reportScopedFiltered]);
+  const reportScopedTrackedMs = useMemo(
+    () => reportScopedFiltered.reduce((s, e) => s + getTaskTrackedMs(e, nowTick), 0),
+    [reportScopedFiltered, nowTick],
+  );
   const tasksForDay = (inboxOnly ? inboxEntries.filter((x) => matchesSearch(x)) : filteredScheduledEntries)
     .filter((item) => (inboxOnly ? true : item.date === form.date))
     .sort((a, b) => a.time.localeCompare(b.time));
@@ -2378,12 +2851,16 @@ export default function App() {
       const byDate = a.date.localeCompare(b.date);
       return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
     });
-  const allTasks = [...filteredScheduledEntries]
-    .filter((item) => (showArchiveOnly ? item.completed : true))
-    .sort((a, b) => {
-      const byDate = b.date.localeCompare(a.date);
-      return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
-    });
+  const allTasks = useMemo(
+    () =>
+      [...reportScopedFiltered]
+        .filter((item) => (showArchiveOnly ? item.completed : true))
+        .sort((a, b) => {
+          const byDate = b.date.localeCompare(a.date);
+          return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
+        }),
+    [reportScopedFiltered, showArchiveOnly],
+  );
   const hasTasksOnDay = (date: string) => scheduledEntries.some((item) => item.date === date);
   const getPriorityLabel = (priority: Priority) =>
     priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityMedium;
@@ -2601,10 +3078,10 @@ export default function App() {
   const maxBar = Math.max(1, ...productivityBars.map((b) => b.value));
   const topTasks = useMemo(
     () =>
-      [...scheduledEntries]
+      [...reportScopedFiltered]
         .sort((a, b) => getTaskTrackedMs(b, nowTick) - getTaskTrackedMs(a, nowTick))
         .slice(0, 3),
-    [nowTick, scheduledEntries],
+    [nowTick, reportScopedFiltered],
   );
   const activelyTrackedTask = useMemo(
     () => entries.find((item) => Boolean(item.trackingStartedAt) && !item.completed),
@@ -2629,7 +3106,11 @@ export default function App() {
 
   const renderCalendar = () => (
     <>
-      <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+      <View
+        style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
         <Animated.Text
           style={[
             styles.quoteText,
@@ -2944,6 +3425,20 @@ export default function App() {
             </Pressable>
           ))}
         </View>
+        <Text style={[styles.menuSubtitle, { marginBottom: 6, marginTop: 8 }]}>{t.repeatLabel}</Text>
+        <View style={styles.languageButtons}>
+          {(['none', 'daily', 'weekly'] as RepeatRule[]).map((rule) => (
+            <Pressable
+              key={`form-repeat-${rule}`}
+              onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, repeatRule: rule })))}
+              style={[styles.languageButton, form.repeatRule === rule && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, form.repeatRule === rule && styles.languageButtonTextActive]}>
+                {rule === 'none' ? t.repeatNone : rule === 'daily' ? t.repeatDaily : t.repeatWeekly}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <View style={styles.templatesRow}>
           {taskTemplates[language].map((template) => (
             <Pressable
@@ -3043,7 +3538,12 @@ export default function App() {
           scrollEnabled
           nestedScrollEnabled
           style={styles.dayTasksList}
-          ListEmptyComponent={<Text style={styles.emptyText}>{t.noTasksForDay}</Text>}
+          ListEmptyComponent={
+            <View>
+              <Text style={styles.emptyText}>{t.noTasksForDay}</Text>
+              <Text style={[styles.entryNotes, { marginTop: 8, textAlign: 'center' }]}>{t.emptyTasksHint}</Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <View style={styles.entryCard}>
               <View style={styles.entryHeader}>
@@ -3056,6 +3556,11 @@ export default function App() {
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
               <Text style={styles.entryTask}>{localizedTask(item)}</Text>
+              {(item.repeatRule === 'daily' || item.repeatRule === 'weekly') && (
+                <Text style={[styles.entryNotes, { fontStyle: 'italic', opacity: 0.9 }]}>
+                  ↻ {item.repeatRule === 'daily' ? t.taskRepeatBadgeDaily : t.taskRepeatBadgeWeekly}
+                </Text>
+              )}
               {!!localizedTag(item) && <Text style={styles.entryNotes}>#{localizedTag(item)}</Text>}
               {!!localizedNotes(item) && <Text style={styles.entryNotes}>{localizedNotes(item)}</Text>}
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
@@ -3071,6 +3576,11 @@ export default function App() {
                 {item.completed && (
                   <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
                     <Text style={styles.markDoneText}>{t.editDoneComment}</Text>
+                  </Pressable>
+                )}
+                {Platform.OS !== 'web' && (
+                  <Pressable onPress={withInteractionFeedback(() => addTaskToDeviceCalendar(item))}>
+                    <Text style={styles.markDoneText}>{t.addToCalendar}</Text>
                   </Pressable>
                 )}
                 <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
@@ -3108,7 +3618,12 @@ export default function App() {
           data={inboxEntries}
           keyExtractor={(item) => `inbox-${item.id}`}
           scrollEnabled={false}
-          ListEmptyComponent={<Text style={styles.emptyText}>{t.noInbox}</Text>}
+          ListEmptyComponent={
+            <View>
+              <Text style={styles.emptyText}>{t.noInbox}</Text>
+              <Text style={[styles.entryNotes, { marginTop: 8, textAlign: 'center' }]}>{t.emptyInboxHint}</Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <View style={styles.entryCard}>
               <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
@@ -3134,7 +3649,11 @@ export default function App() {
 
   const renderReport = () => (
     <>
-      <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+      <View
+        style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
         <Animated.Text
           style={[
             styles.quoteText,
@@ -3147,26 +3666,48 @@ export default function App() {
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.workDay}</Text>
+        <Text style={[styles.entryNotes, { opacity: 0.85 }]}>{t.reportPeriodHint}</Text>
         <Text style={styles.entryNotes}>{t.workTime}: {formatDuration(dayStats.workMs)}</Text>
         <Text style={styles.entryNotes}>{t.breakTime}: {formatDuration(dayStats.breakMs)}</Text>
         <Text style={styles.entryNotes}>{t.netTime}: {formatDuration(dayStats.netMs)}</Text>
-        <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(totalTaskTrackedMs)}</Text>
+        <Text style={styles.entryNotes}>
+          {t.taskTime} (
+          {reportScope === 'today' ? t.reportScopeToday : reportScope === 'week' ? t.reportScopeWeek : t.reportScopeMonth}):{' '}
+          {formatDuration(reportScopedTrackedMs)}
+        </Text>
         <Text style={styles.entryNotes}>{t.productiveTime}: {formatDuration(productiveMs)}</Text>
         <Text style={styles.entryNotes}>{t.idleTime}: {formatDuration(idleMs)}</Text>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.reportScopeLabel}</Text>
+        <View style={styles.languageButtons}>
+          {(['today', 'week', 'month'] as ReportScope[]).map((scope) => (
+            <Pressable
+              key={`report-scope-${scope}`}
+              onPress={withInteractionFeedback(() => setReportScope(scope))}
+              style={[styles.languageButton, reportScope === scope && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, reportScope === scope && styles.languageButtonTextActive]}>
+                {scope === 'today' ? t.reportScopeToday : scope === 'week' ? t.reportScopeWeek : t.reportScopeMonth}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryBox}>
           <Text style={styles.summaryLabel}>{t.totalTasks}</Text>
-          <Text style={styles.summaryValue}>{summary.total}</Text>
+          <Text style={styles.summaryValue}>{reportSummary.total}</Text>
         </View>
         <View style={styles.summaryBox}>
           <Text style={styles.summaryLabel}>{t.pendingTasks}</Text>
-          <Text style={styles.summaryValue}>{summary.pending}</Text>
+          <Text style={styles.summaryValue}>{reportSummary.pending}</Text>
         </View>
         <View style={styles.summaryBox}>
           <Text style={styles.summaryLabel}>{t.doneTasks}</Text>
-          <Text style={styles.summaryValue}>{summary.done}</Text>
+          <Text style={styles.summaryValue}>{reportSummary.done}</Text>
         </View>
       </View>
       <View style={styles.summaryRow}>
@@ -3307,7 +3848,11 @@ export default function App() {
 
   const renderSettings = () => (
     <>
-      <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+      <View
+        style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
         <Animated.Text
           style={[
             styles.quoteText,
@@ -3512,6 +4057,7 @@ export default function App() {
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.backupTitle}</Text>
+        <Text style={[styles.entryNotes, { marginBottom: 10, color: c.textSecondary }]}>{t.autoBackupHint}</Text>
         <View style={styles.actionsRow}>
           <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportJsonBackup)}>
             <Text style={styles.secondaryButtonText}>{t.exportJson}</Text>
@@ -3519,7 +4065,31 @@ export default function App() {
           <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(importJsonBackup)}>
             <Text style={styles.secondaryButtonText}>{t.importJson}</Text>
           </Pressable>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(() => void revertLastImport())}>
+            <Text style={styles.secondaryButtonText}>{t.revertImport}</Text>
+          </Pressable>
         </View>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.proTitle}</Text>
+        <Text style={[styles.entryNotes, { marginBottom: 10, color: c.textSecondary }]}>{t.proSubtitle}</Text>
+        <Text style={[styles.entryNotes, { marginBottom: 8 }]}>
+          {isProUnlocked ? `✓ ${t.proUnlocked}` : `— ${t.proMonthPdfLocked}`}
+        </Text>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={withInteractionFeedback(() => setIsProUnlocked(true))}
+        >
+          <Text style={styles.secondaryButtonText}>{t.proUnlockPreview}</Text>
+        </Pressable>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.widgetsTitle}</Text>
+        <Text style={[styles.entryNotes, { color: c.textSecondary }]}>{t.widgetsBody}</Text>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.locationRemindersTitle}</Text>
+        <Text style={[styles.entryNotes, { color: c.textSecondary }]}>{t.locationRemindersBody}</Text>
       </View>
     </>
   );
@@ -3535,16 +4105,24 @@ export default function App() {
         <View style={[styles.tabBar, { backgroundColor: c.tabBg, borderColor: c.tabBorder }]}>
           {tabs.map((tab) => {
             const active = screen === tab.key;
+            const tabHint =
+              tab.key === 'calendar' ? t.tabCalendarHint : tab.key === 'report' ? t.tabReportHint : t.tabSettingsHint;
             return (
               <Pressable
                 key={tab.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={tabHint}
                 onPress={withInteractionFeedback(() => setScreen(tab.key))}
                 style={[styles.tabItem, active && styles.tabItemActive, active && { backgroundColor: c.tabActiveBg }]}
               >
-                <View style={[styles.tabIconWrap, active && styles.tabIconWrapActive]}>
+                <View style={[styles.tabIconWrap, active && styles.tabIconWrapActive]} accessible={false}>
                   <TabGlyph type={tab.iconType} active={active} color={active ? c.tabIconActive : c.tabIcon} />
                 </View>
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive, { color: active ? c.tabIconActive : c.tabIcon }]}>
+                <Text
+                  style={[styles.tabLabel, active && styles.tabLabelActive, { color: active ? c.tabIconActive : c.tabIcon }]}
+                  maxFontSizeMultiplier={1.4}
+                >
                   {tab.label}
                 </Text>
               </Pressable>
@@ -3578,6 +4156,46 @@ export default function App() {
             {screen === 'settings' && renderSettings()}
           </ScrollView>
         )}
+        <Modal
+          visible={!loading && !onboardingComplete && isUnlocked}
+          animationType="fade"
+          transparent
+          onRequestClose={() => void completeOnboarding()}
+        >
+          <View style={[styles.modalOverlay, styles.onboardingOverlay]}>
+            <View style={[styles.modalCard, styles.onboardingCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
+                {onboardingPage === 0 ? t.onboardingTitle1 : onboardingPage === 1 ? t.onboardingTitle2 : t.onboardingTitle3}
+              </Text>
+              <Text style={[styles.entryNotes, { color: c.textPrimary, marginVertical: 14 }]}>
+                {onboardingPage === 0 ? t.onboardingBody1 : onboardingPage === 1 ? t.onboardingBody2 : t.onboardingBody3}
+              </Text>
+              <View style={styles.actionsRow}>
+                <Pressable
+                  style={[styles.secondaryButton, styles.actionButton]}
+                  onPress={withInteractionFeedback(() => void completeOnboarding())}
+                >
+                  <Text style={styles.secondaryButtonText}>{t.onboardingSkip}</Text>
+                </Pressable>
+                {onboardingPage < 2 ? (
+                  <Pressable
+                    style={[styles.primaryButton, styles.actionButton]}
+                    onPress={withInteractionFeedback(() => setOnboardingPage((p) => Math.min(2, p + 1)))}
+                  >
+                    <Text style={styles.buttonText}>{t.onboardingNext}</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={[styles.primaryButton, styles.actionButton]}
+                    onPress={withInteractionFeedback(() => void completeOnboarding())}
+                  >
+                    <Text style={styles.buttonText}>{t.onboardingDone}</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
         <Modal transparent visible={Boolean(commentTaskId)} animationType="none" onRequestClose={closeCommentModal}>
           <Animated.View style={[styles.modalOverlay, { opacity: commentModalOpacity }]}>
             <Animated.View
@@ -4268,6 +4886,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
+  },
+  onboardingOverlay: {
+    backgroundColor: 'rgba(8, 12, 24, 0.78)',
+  },
+  onboardingCard: {
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center',
   },
   chartRow: {
     flexDirection: 'row',
