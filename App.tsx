@@ -1913,6 +1913,7 @@ export default function App() {
         ? styles.priorityLow
         : styles.priorityMedium;
   const getStatusStyle = (completed: boolean) => (completed ? styles.statusDoneChip : styles.statusInProgressChip);
+  const getStatusLabel = (completed: boolean) => (completed ? `✓ ${t.completed}` : `• ${t.pending}`);
   const priorityFilterOptions: PriorityFilter[] = ['all', 'low', 'medium', 'high'];
   const getPriorityFilterLabel = (filter: PriorityFilter) =>
     filter === 'all' ? t.priorityAll : getPriorityLabel(filter);
@@ -2662,7 +2663,7 @@ export default function App() {
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
               <View style={[styles.priorityBadge, getStatusStyle(item.completed)]}>
-                <Text style={styles.priorityBadgeText}>{item.completed ? t.completed : t.pending}</Text>
+                <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
               </View>
               <Text style={styles.entryNotes}>{item.task}</Text>
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
