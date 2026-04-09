@@ -54,6 +54,7 @@ type WorkDayState = {
   startedAt?: string;
   endedAt?: string;
   breaks: BreakEntry[];
+  accumulatedWorkMs: number;
 };
 
 const STORAGE_KEY = 'work-report-entries-v1';
@@ -459,11 +460,15 @@ export default function App() {
     tabIcon: isColorful ? '#6366F1' : isDark ? '#9fb1d8' : '#6c7389',
     tabIconActive: isColorful ? '#4F46E5' : '#3b82f6',
   };
-  const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
+  const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [], accumulatedWorkMs: 0 });
   const lastDateIndexRef = useRef<number>(-1);
   const lastTimeIndexRef = useRef<number>(-1);
+  const lastDateHapticIndexRef = useRef<number>(-1);
+  const lastTimeHapticIndexRef = useRef<number>(-1);
   const dateWheelRef = useRef<FlatList<string> | null>(null);
   const timeWheelRef = useRef<FlatList<string> | null>(null);
+  const dateSnapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeSnapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
@@ -735,6 +740,8 @@ export default function App() {
             startedAt: parsedWorkDay.startedAt,
             endedAt: parsedWorkDay.endedAt,
             breaks: Array.isArray(parsedWorkDay.breaks) ? parsedWorkDay.breaks : [],
+            accumulatedWorkMs:
+              typeof parsedWorkDay.accumulatedWorkMs === 'number' ? parsedWorkDay.accumulatedWorkMs : 0,
           });
         }
       } catch {
@@ -883,17 +890,55 @@ export default function App() {
 
   useEffect(() => {
     lastDateIndexRef.current = selectedDateIndex;
+    lastDateHapticIndexRef.current = selectedDateIndex;
     dateWheelRef.current?.scrollToIndex({ index: selectedDateIndex, animated: false });
   }, [selectedDateIndex]);
 
   useEffect(() => {
     lastTimeIndexRef.current = selectedTimeIndex;
+    lastTimeHapticIndexRef.current = selectedTimeIndex;
     timeWheelRef.current?.scrollToIndex({ index: selectedTimeIndex, animated: false });
   }, [selectedTimeIndex]);
 
   const getWheelIndex = (offsetY: number, length: number) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
     return Math.max(0, Math.min(length - 1, index));
+  };
+
+  const handleDateWheelHapticScroll = (offsetY: number) => {
+    const index = getWheelIndex(offsetY, dateOptions.length);
+    if (index === lastDateHapticIndexRef.current) {
+      return;
+    }
+    lastDateHapticIndexRef.current = index;
+    if (!hapticsEnabled) {
+      return;
+    }
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(8);
+      }
+      return;
+    }
+    void Haptics.selectionAsync();
+  };
+
+  const handleTimeWheelHapticScroll = (offsetY: number) => {
+    const index = getWheelIndex(offsetY, timeOptions.length);
+    if (index === lastTimeHapticIndexRef.current) {
+      return;
+    }
+    lastTimeHapticIndexRef.current = index;
+    if (!hapticsEnabled) {
+      return;
+    }
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(8);
+      }
+      return;
+    }
+    void Haptics.selectionAsync();
   };
 
   const finalizeDateWheel = (offsetY: number) => {
@@ -909,6 +954,13 @@ export default function App() {
     }
   };
 
+  const scheduleFinalizeDateWheel = (offsetY: number) => {
+    if (dateSnapTimerRef.current) {
+      clearTimeout(dateSnapTimerRef.current);
+    }
+    dateSnapTimerRef.current = setTimeout(() => finalizeDateWheel(offsetY), 40);
+  };
+
   const finalizeTimeWheel = (offsetY: number) => {
     const bounded = getWheelIndex(offsetY, timeOptions.length);
     const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
@@ -921,6 +973,24 @@ export default function App() {
       }
     }
   };
+
+  const scheduleFinalizeTimeWheel = (offsetY: number) => {
+    if (timeSnapTimerRef.current) {
+      clearTimeout(timeSnapTimerRef.current);
+    }
+    timeSnapTimerRef.current = setTimeout(() => finalizeTimeWheel(offsetY), 40);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (dateSnapTimerRef.current) {
+        clearTimeout(dateSnapTimerRef.current);
+      }
+      if (timeSnapTimerRef.current) {
+        clearTimeout(timeSnapTimerRef.current);
+      }
+    };
+  }, []);
 
   const addTask = () => {
     const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(form.time);
@@ -1128,19 +1198,19 @@ export default function App() {
 
   const activeBreak = workDay.breaks.find((item) => !item.endedAt);
   const isDayRunning = Boolean(workDay.startedAt) && !workDay.endedAt;
-  const dayStatusLabel = !workDay.startedAt
+  const dayStatusLabel = workDay.endedAt
+    ? language === 'uk'
+      ? 'Завершено'
+      : language === 'ro'
+        ? 'Finalizat'
+        : 'Finished'
+    : !workDay.startedAt
     ? language === 'uk'
       ? 'Не розпочато'
       : language === 'ro'
         ? 'Neinceput'
         : 'Not started'
-    : workDay.endedAt
-      ? language === 'uk'
-        ? 'Завершено'
-        : language === 'ro'
-          ? 'Finalizat'
-          : 'Finished'
-      : activeBreak
+    : activeBreak
         ? t.pauseDay
         : language === 'uk'
           ? 'В роботі'
@@ -1156,12 +1226,39 @@ export default function App() {
     return `${hours}h ${minutes}m`;
   };
 
-  const startDay = () => {
+  useEffect(() => {
+    const currentDate = formatLocalDate(new Date(nowTick));
+    if (workDay.date === currentDate) {
+      return;
+    }
     setWorkDay({
-      date: today,
-      startedAt: new Date().toISOString(),
+      date: currentDate,
+      startedAt: undefined,
       endedAt: undefined,
       breaks: [],
+      accumulatedWorkMs: 0,
+    });
+  }, [nowTick, workDay.date]);
+
+  const startDay = () => {
+    const now = new Date();
+    const currentDate = formatLocalDate(now);
+    const nowIso = now.toISOString();
+    setWorkDay((prev) => {
+      if (prev.date === currentDate) {
+        return {
+          ...prev,
+          startedAt: nowIso,
+          endedAt: undefined,
+        };
+      }
+      return {
+        date: currentDate,
+        startedAt: nowIso,
+        endedAt: undefined,
+        breaks: [],
+        accumulatedWorkMs: 0,
+      };
     });
   };
 
@@ -1171,11 +1268,16 @@ export default function App() {
     }
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
-    setWorkDay((prev) => ({
-      ...prev,
-      endedAt: nowIso,
-      breaks: prev.breaks.map((item) => (item.endedAt ? item : { ...item, endedAt: nowIso })),
-    }));
+    setWorkDay((prev) => {
+      const sessionWorkMs = prev.startedAt ? Math.max(0, nowMs - new Date(prev.startedAt).getTime()) : 0;
+      return {
+        ...prev,
+        startedAt: undefined,
+        endedAt: nowIso,
+        accumulatedWorkMs: prev.accumulatedWorkMs + sessionWorkMs,
+        breaks: prev.breaks.map((item) => (item.endedAt ? item : { ...item, endedAt: nowIso })),
+      };
+    });
     setEntries((prev) =>
       prev.map((item) =>
         item.trackingStartedAt
@@ -1230,12 +1332,8 @@ export default function App() {
   };
 
   const dayStats = useMemo(() => {
-    if (!workDay.startedAt) {
-      return { workMs: 0, breakMs: 0, netMs: 0 };
-    }
-    const started = new Date(workDay.startedAt).getTime();
-    const endPoint = workDay.endedAt ? new Date(workDay.endedAt).getTime() : nowTick;
-    const workMs = Math.max(0, endPoint - started);
+    const sessionMs = workDay.startedAt ? Math.max(0, nowTick - new Date(workDay.startedAt).getTime()) : 0;
+    const workMs = Math.max(0, workDay.accumulatedWorkMs + sessionMs);
     const breakMs = workDay.breaks.reduce((sum, item) => {
       const start = new Date(item.startedAt).getTime();
       const end = item.endedAt ? new Date(item.endedAt).getTime() : nowTick;
@@ -1289,8 +1387,8 @@ export default function App() {
             <Text style={styles.statusBadgeText}>{dayStatusLabel}</Text>
           </View>
         </View>
-        {!workDay.startedAt && <Text style={styles.emptyText}>{t.dayNotStarted}</Text>}
-        {!!workDay.startedAt && !!workDay.endedAt && <Text style={styles.emptyText}>{t.dayFinished}</Text>}
+        {!workDay.startedAt && !workDay.endedAt && <Text style={styles.emptyText}>{t.dayNotStarted}</Text>}
+        {!!workDay.endedAt && <Text style={styles.emptyText}>{t.dayFinished}</Text>}
         <View style={styles.summaryRow}>
           <View style={styles.summaryBox}>
             <Text style={styles.summaryLabel}>{t.workTime}</Text>
@@ -1426,12 +1524,13 @@ export default function App() {
               showsVerticalScrollIndicator={false}
               snapToInterval={WHEEL_ITEM_HEIGHT}
               snapToAlignment="start"
-              decelerationRate="fast"
+              decelerationRate={Platform.OS === 'ios' ? 0.992 : 'fast'}
               bounces={false}
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
-              onMomentumScrollEnd={(event) => finalizeDateWheel(event.nativeEvent.contentOffset.y)}
-              onScrollEndDrag={(event) => finalizeDateWheel(event.nativeEvent.contentOffset.y)}
+              onScroll={(event) => handleDateWheelHapticScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={(event) => scheduleFinalizeDateWheel(event.nativeEvent.contentOffset.y)}
+              onScrollEndDrag={(event) => scheduleFinalizeDateWheel(event.nativeEvent.contentOffset.y)}
               onScrollToIndexFailed={(info) => {
                 dateWheelRef.current?.scrollToOffset({
                   offset: info.index * WHEEL_ITEM_HEIGHT,
@@ -1472,12 +1571,13 @@ export default function App() {
               showsVerticalScrollIndicator={false}
               snapToInterval={WHEEL_ITEM_HEIGHT}
               snapToAlignment="start"
-              decelerationRate="fast"
+              decelerationRate={Platform.OS === 'ios' ? 0.992 : 'fast'}
               bounces={false}
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
-              onMomentumScrollEnd={(event) => finalizeTimeWheel(event.nativeEvent.contentOffset.y)}
-              onScrollEndDrag={(event) => finalizeTimeWheel(event.nativeEvent.contentOffset.y)}
+              onScroll={(event) => handleTimeWheelHapticScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={(event) => scheduleFinalizeTimeWheel(event.nativeEvent.contentOffset.y)}
+              onScrollEndDrag={(event) => scheduleFinalizeTimeWheel(event.nativeEvent.contentOffset.y)}
               onScrollToIndexFailed={(info) => {
                 timeWheelRef.current?.scrollToOffset({
                   offset: info.index * WHEEL_ITEM_HEIGHT,
