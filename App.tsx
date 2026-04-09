@@ -13,6 +13,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
   Pressable as RNPressable,
   PressableProps,
@@ -22,6 +23,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 
@@ -107,8 +109,8 @@ const Pressable = ({ style, ...props }: PressableProps) => (
       return [
         resolved,
         {
-          opacity: 0.9,
-          transform: [...existingTransform, { scale: 0.985 }],
+          opacity: 0.88,
+          transform: [...existingTransform, { scale: 0.975 }],
         },
       ];
     }}
@@ -640,6 +642,9 @@ export default function App() {
   const ongoingTaskNotifTaskIdRef = useRef<string | null>(null);
   const webAudioContextRef = useRef<AudioContext | null>(null);
   const webAudioUnlockedRef = useRef(false);
+  const animateNextLayout = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  };
   const setWebMetaTag = (name: string, content: string) => {
     if (Platform.OS !== 'web') {
       return;
@@ -920,6 +925,12 @@ export default function App() {
     }, 9000);
     return () => clearInterval(quoteTimer);
   }, [motivationalQuotes.length, quoteOpacity, quoteTranslateY]);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -1350,6 +1361,7 @@ export default function App() {
       trackedMs: 0,
       trackingStartedAt: undefined,
     };
+    animateNextLayout();
     setEntries((prev) => [entry, ...prev]);
     setForm((prev) => ({ ...INITIAL_FORM, date: prev.date, time: prev.time }));
     void scheduleTaskReminders(entry);
@@ -1373,11 +1385,13 @@ export default function App() {
       trackedMs: 0,
       trackingStartedAt: undefined,
     };
+    animateNextLayout();
     setEntries((prev) => [entry, ...prev]);
     setForm((prev) => ({ ...INITIAL_FORM, date: prev.date, time: prev.time }));
   };
 
   const planInboxTask = (id: string) => {
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) =>
         item.id === id
@@ -1397,6 +1411,7 @@ export default function App() {
     if (!value) {
       return;
     }
+    animateNextLayout();
     setTaskTemplates((prev) => {
       const exists = prev[language].some((item) => item.toLowerCase() === value.toLowerCase());
       if (exists) {
@@ -1411,6 +1426,7 @@ export default function App() {
   };
 
   const removeTaskPreset = (preset: string) => {
+    animateNextLayout();
     setTaskTemplates((prev) => ({
       ...prev,
       [language]: prev[language].filter((item) => item !== preset),
@@ -1430,6 +1446,7 @@ export default function App() {
     if (!commentTaskId) {
       return;
     }
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) =>
         item.id === commentTaskId && item.completed ? { ...item, notes: commentDraft.trim() } : item,
@@ -1578,12 +1595,14 @@ export default function App() {
   };
 
   const removeTask = (id: string) => {
+    animateNextLayout();
     setEntries((prev) => prev.filter((item) => item.id !== id));
   };
 
   const markDone = (id: string) => {
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) => {
         if (item.id !== id) {
@@ -1604,6 +1623,7 @@ export default function App() {
   const toggleDone = (id: string) => {
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) => {
         if (item.id !== id) {
@@ -1630,6 +1650,7 @@ export default function App() {
     }
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) => {
         if (item.completed) {
@@ -1657,6 +1678,7 @@ export default function App() {
   const pauseTaskTimer = (id: string) => {
     const nowIso = new Date().toISOString();
     const nowMs = new Date(nowIso).getTime();
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) => {
         if (item.id !== id || !item.trackingStartedAt) {
@@ -1679,6 +1701,7 @@ export default function App() {
     const newDate = formatLocalDate(now);
     const newTime = formatLocalTime(now);
 
+    animateNextLayout();
     setEntries((prev) =>
       prev.map((item) => {
         // Pause any running task before switching.
