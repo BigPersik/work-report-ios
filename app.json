@@ -28,6 +28,8 @@
       "shortName": "DayFlow",
       "lang": "uk",
       "favicon": "./assets/favicon.png",
+      "themeColor": "#0B1220",
+      "backgroundColor": "#0B1220",
       "bundler": "metro"
     }
   }

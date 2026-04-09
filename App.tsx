@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -438,6 +439,8 @@ export default function App() {
   const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
   const lastDateIndexRef = useRef<number>(-1);
   const lastTimeIndexRef = useRef<number>(-1);
+  const quoteOpacity = useRef(new Animated.Value(1)).current;
+  const quoteTranslateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
@@ -495,10 +498,36 @@ export default function App() {
 
   useEffect(() => {
     const quoteTimer = setInterval(() => {
-      setQuoteIndex((prev) => (prev + 1) % motivationalQuotes.length);
+      Animated.parallel([
+        Animated.timing(quoteOpacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(quoteTranslateY, {
+          toValue: -6,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setQuoteIndex((prev) => (prev + 1) % motivationalQuotes.length);
+        quoteTranslateY.setValue(6);
+        Animated.parallel([
+          Animated.timing(quoteOpacity, {
+            toValue: 1,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+          Animated.timing(quoteTranslateY, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
     }, 9000);
     return () => clearInterval(quoteTimer);
-  }, [motivationalQuotes.length]);
+  }, [motivationalQuotes.length, quoteOpacity, quoteTranslateY]);
 
   useEffect(() => {
     const load = async () => {
@@ -1040,7 +1069,14 @@ export default function App() {
   const renderCalendar = () => (
     <>
       <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.quoteText, { color: c.textPrimary }]}>{motivationalQuotes[quoteIndex]}</Text>
+        <Animated.Text
+          style={[
+            styles.quoteText,
+            { color: c.textPrimary, opacity: quoteOpacity, transform: [{ translateY: quoteTranslateY }] },
+          ]}
+        >
+          {motivationalQuotes[quoteIndex]}
+        </Animated.Text>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -1327,7 +1363,14 @@ export default function App() {
   const renderReport = () => (
     <>
       <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.quoteText, { color: c.textPrimary }]}>{motivationalQuotes[quoteIndex]}</Text>
+        <Animated.Text
+          style={[
+            styles.quoteText,
+            { color: c.textPrimary, opacity: quoteOpacity, transform: [{ translateY: quoteTranslateY }] },
+          ]}
+        >
+          {motivationalQuotes[quoteIndex]}
+        </Animated.Text>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -1403,7 +1446,14 @@ export default function App() {
   const renderSettings = () => (
     <>
       <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.quoteText, { color: c.textPrimary }]}>{motivationalQuotes[quoteIndex]}</Text>
+        <Animated.Text
+          style={[
+            styles.quoteText,
+            { color: c.textPrimary, opacity: quoteOpacity, transform: [{ translateY: quoteTranslateY }] },
+          ]}
+        >
+          {motivationalQuotes[quoteIndex]}
+        </Animated.Text>
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.language}</Text>
@@ -1474,7 +1524,11 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: c.appBg }]}>
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={[styles.safeArea, { backgroundColor: c.appBg }]}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <StatusBar
+          style={isDark || isColorful ? 'light' : 'dark'}
+          translucent
+          backgroundColor="transparent"
+        />
         <ScrollView contentContainerStyle={styles.scrollContainer}>
           {screen === 'calendar' && renderCalendar()}
           {screen === 'report' && renderReport()}
