@@ -2805,16 +2805,19 @@ export default function App() {
           scrollEnabled={false}
           ListEmptyComponent={<Text style={styles.emptyText}>{t.noPresets}</Text>}
           renderItem={({ item }) => (
-            <View style={styles.entryCard}>
-              <Text style={styles.entryTask}>{item}</Text>
-              <View style={styles.taskActionRow}>
-                <Pressable onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: item })))}>
-                  <Text style={styles.markDoneText}>{t.addTask}</Text>
-                </Pressable>
-                <Pressable onPress={withInteractionFeedback(() => removeTaskPreset(item))}>
-                  <Text style={styles.deleteText}>{t.delete}</Text>
-                </Pressable>
-              </View>
+            <View style={styles.presetChipRow}>
+              <Pressable
+                style={[styles.templateChip, styles.presetChip]}
+                onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: item })))}
+              >
+                <Text style={styles.templateChipText}>{item}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.presetDeleteButton}
+                onPress={withInteractionFeedback(() => removeTaskPreset(item))}
+              >
+                <Text style={styles.presetDeleteButtonText}>×</Text>
+              </Pressable>
             </View>
           )}
         />
@@ -3536,5 +3539,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
+  },
+  presetChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  presetChip: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  presetDeleteButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#f1b4b4',
+    backgroundColor: '#fff1f1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetDeleteButtonText: {
+    color: '#dc2626',
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 18,
   },
 });
