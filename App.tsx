@@ -1750,10 +1750,12 @@ export default function App() {
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.currentTask}</Text>
         {currentTask ? (
           <>
-            <Text style={styles.entryTask}>{currentTask.date} {currentTask.time}</Text>
-            <Text style={styles.entryNotes}>{currentTask.task}</Text>
-            {!!currentTask.notes && <Text style={styles.entryNotes}>{currentTask.notes}</Text>}
-            <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(currentTask, nowTick))}</Text>
+            <Text style={[styles.entryTask, { color: c.textPrimary }]}>{currentTask.date} {currentTask.time}</Text>
+            <Text style={[styles.entryNotes, { color: c.textPrimary }]}>{currentTask.task}</Text>
+            {!!currentTask.notes && <Text style={[styles.entryNotes, { color: c.textSecondary }]}>{currentTask.notes}</Text>}
+            <Text style={[styles.entryNotes, { color: c.textSecondary }]}>
+              {t.taskTime}: {formatDuration(getTaskTrackedMs(currentTask, nowTick))}
+            </Text>
             <View style={styles.taskActionRow}>
               <Pressable onPress={withInteractionFeedback(() => (currentTask.trackingStartedAt ? pauseTaskTimer(currentTask.id) : startTaskTimer(currentTask.id)))}>
                 <Text style={styles.markDoneText}>
@@ -1774,8 +1776,8 @@ export default function App() {
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.nextTask}</Text>
         {nextTask ? (
           <>
-            <Text style={styles.entryTask}>{nextTask.date} {nextTask.time}</Text>
-            <Text style={styles.entryNotes}>{nextTask.task}</Text>
+            <Text style={[styles.entryTask, { color: c.textPrimary }]}>{nextTask.date} {nextTask.time}</Text>
+            <Text style={[styles.entryNotes, { color: c.textPrimary }]}>{nextTask.task}</Text>
             <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(() => startTaskNow(nextTask.id))}>
               <Text style={styles.buttonText}>{t.startNow}</Text>
             </Pressable>
