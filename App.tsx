@@ -72,6 +72,13 @@ const THEME_KEY = 'work-report-theme-v1';
 const SOUND_KEY = 'work-report-sound-v1';
 const HAPTICS_KEY = 'work-report-haptics-v1';
 const NOTIFICATIONS_KEY = 'work-report-notifications-v1';
+const PRIORITY_FILTER_KEY = 'work-report-priority-filter-v1';
+const TASK_TEMPLATES_KEY = 'work-report-task-templates-v1';
+const DEFAULT_TASK_TEMPLATES: Record<Language, string[]> = {
+  uk: ['Щоденний звіт', 'Code review', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
+  en: ['Daily report', 'Code review', 'Team meeting', 'Fix bug', 'Task planning'],
+  ro: ['Raport zilnic', 'Code review', 'Sedinta cu echipa', 'Rezolva bug', 'Planificare task-uri'],
+};
 const formatLocalDate = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -117,6 +124,10 @@ const translations: Record<
     exportDaySummary: string;
     exportJson: string;
     importJson: string;
+    taskPresets: string;
+    taskPresetPlaceholder: string;
+    addPreset: string;
+    noPresets: string;
     on: string;
     off: string;
     themeLight: string;
@@ -209,6 +220,10 @@ const translations: Record<
     exportDaySummary: 'Експорт підсумку дня',
     exportJson: 'Експорт JSON',
     importJson: 'Імпорт JSON',
+    taskPresets: 'Пресети задач',
+    taskPresetPlaceholder: 'Новий пресет задачі',
+    addPreset: 'Додати пресет',
+    noPresets: 'Ще немає пресетів.',
     on: 'Увімк.',
     off: 'Вимк.',
     themeLight: 'Світла',
@@ -300,6 +315,10 @@ const translations: Record<
     exportDaySummary: 'Export day summary',
     exportJson: 'Export JSON',
     importJson: 'Import JSON',
+    taskPresets: 'Task presets',
+    taskPresetPlaceholder: 'New task preset',
+    addPreset: 'Add preset',
+    noPresets: 'No presets yet.',
     on: 'On',
     off: 'Off',
     themeLight: 'Light',
@@ -391,6 +410,10 @@ const translations: Record<
     exportDaySummary: 'Export rezumat zi',
     exportJson: 'Export JSON',
     importJson: 'Import JSON',
+    taskPresets: 'Preseturi task',
+    taskPresetPlaceholder: 'Preset nou task',
+    addPreset: 'Adauga preset',
+    noPresets: 'Nu exista preseturi.',
     on: 'Pornit',
     off: 'Oprit',
     themeLight: 'Luminoasă',
@@ -534,6 +557,8 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [screen, setScreen] = useState<Screen>('calendar');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [taskTemplates, setTaskTemplates] = useState<Record<Language, string[]>>(DEFAULT_TASK_TEMPLATES);
+  const [presetDraft, setPresetDraft] = useState('');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
@@ -858,7 +883,17 @@ export default function App() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [raw, savedLanguage, rawWorkDay, savedTheme, savedSound, savedHaptics, savedNotifications] = await Promise.all([
+        const [
+          raw,
+          savedLanguage,
+          rawWorkDay,
+          savedTheme,
+          savedSound,
+          savedHaptics,
+          savedNotifications,
+          savedPriorityFilter,
+          savedTaskTemplates,
+        ] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEY),
           AsyncStorage.getItem(LANGUAGE_KEY),
           AsyncStorage.getItem(WORKDAY_KEY),
@@ -866,6 +901,8 @@ export default function App() {
           AsyncStorage.getItem(SOUND_KEY),
           AsyncStorage.getItem(HAPTICS_KEY),
           AsyncStorage.getItem(NOTIFICATIONS_KEY),
+          AsyncStorage.getItem(PRIORITY_FILTER_KEY),
+          AsyncStorage.getItem(TASK_TEMPLATES_KEY),
         ]);
         if (raw) {
           const parsed: TaskEntry[] = JSON.parse(raw);
@@ -902,6 +939,28 @@ export default function App() {
         if (savedNotifications === '0' || savedNotifications === '1') {
           setNotificationsEnabled(savedNotifications === '1');
         }
+        if (
+          savedPriorityFilter === 'all' ||
+          savedPriorityFilter === 'low' ||
+          savedPriorityFilter === 'medium' ||
+          savedPriorityFilter === 'high'
+        ) {
+          setPriorityFilter(savedPriorityFilter);
+        }
+        if (savedTaskTemplates) {
+          const parsedTemplates = JSON.parse(savedTaskTemplates) as Partial<Record<Language, string[]>>;
+          setTaskTemplates({
+            uk: Array.isArray(parsedTemplates.uk)
+              ? parsedTemplates.uk.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+              : DEFAULT_TASK_TEMPLATES.uk,
+            en: Array.isArray(parsedTemplates.en)
+              ? parsedTemplates.en.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+              : DEFAULT_TASK_TEMPLATES.en,
+            ro: Array.isArray(parsedTemplates.ro)
+              ? parsedTemplates.ro.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+              : DEFAULT_TASK_TEMPLATES.ro,
+          });
+        }
         if (rawWorkDay) {
           const parsedWorkDay: WorkDayState = JSON.parse(rawWorkDay);
           setWorkDay({
@@ -934,10 +993,25 @@ export default function App() {
       AsyncStorage.setItem(SOUND_KEY, soundEnabled ? '1' : '0'),
       AsyncStorage.setItem(HAPTICS_KEY, hapticsEnabled ? '1' : '0'),
       AsyncStorage.setItem(NOTIFICATIONS_KEY, notificationsEnabled ? '1' : '0'),
+      AsyncStorage.setItem(PRIORITY_FILTER_KEY, priorityFilter),
+      AsyncStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(taskTemplates)),
     ]).catch(() => {
       Alert.alert(t.error, t.saveError);
     });
-  }, [entries, hapticsEnabled, language, loading, notificationsEnabled, soundEnabled, t.error, t.saveError, themeMode, workDay]);
+  }, [
+    entries,
+    hapticsEnabled,
+    language,
+    loading,
+    notificationsEnabled,
+    priorityFilter,
+    soundEnabled,
+    t.error,
+    t.saveError,
+    taskTemplates,
+    themeMode,
+    workDay,
+  ]);
 
   const summary = useMemo(() => {
     const scheduled = entries.filter((item) => !item.inbox);
@@ -954,16 +1028,6 @@ export default function App() {
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [entries],
   );
-  const taskTemplates = useMemo<Record<Language, string[]>>(
-    () => ({
-      uk: ['Щоденний звіт', 'Code review', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
-      en: ['Daily report', 'Code review', 'Team meeting', 'Fix bug', 'Task planning'],
-      ro: ['Raport zilnic', 'Code review', 'Sedinta cu echipa', 'Rezolva bug', 'Planificare task-uri'],
-    }),
-    [],
-  );
-
-
   const currentTask = useMemo(() => {
     const now = new Date(nowTick);
     return scheduledEntries
@@ -1285,6 +1349,31 @@ export default function App() {
           : item,
       ),
     );
+  };
+
+  const addTaskPreset = () => {
+    const value = presetDraft.trim();
+    if (!value) {
+      return;
+    }
+    setTaskTemplates((prev) => {
+      const exists = prev[language].some((item) => item.toLowerCase() === value.toLowerCase());
+      if (exists) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [language]: [value, ...prev[language]],
+      };
+    });
+    setPresetDraft('');
+  };
+
+  const removeTaskPreset = (preset: string) => {
+    setTaskTemplates((prev) => ({
+      ...prev,
+      [language]: prev[language].filter((item) => item !== preset),
+    }));
   };
 
   useEffect(() => {
@@ -1650,6 +1739,8 @@ export default function App() {
       soundEnabled,
       hapticsEnabled,
       notificationsEnabled,
+      priorityFilter,
+      taskTemplates,
     };
     const fileUri = `${FileSystem.cacheDirectory}dayflow-backup-${Date.now()}.json`;
     try {
@@ -1687,6 +1778,8 @@ export default function App() {
         soundEnabled?: boolean;
         hapticsEnabled?: boolean;
         notificationsEnabled?: boolean;
+        priorityFilter?: PriorityFilter;
+        taskTemplates?: Partial<Record<Language, string[]>>;
       };
       if (Array.isArray(parsed.entries)) {
         setEntries(
@@ -1724,6 +1817,27 @@ export default function App() {
       }
       if (typeof parsed.notificationsEnabled === 'boolean') {
         setNotificationsEnabled(parsed.notificationsEnabled);
+      }
+      if (
+        parsed.priorityFilter === 'all' ||
+        parsed.priorityFilter === 'low' ||
+        parsed.priorityFilter === 'medium' ||
+        parsed.priorityFilter === 'high'
+      ) {
+        setPriorityFilter(parsed.priorityFilter);
+      }
+      if (parsed.taskTemplates) {
+        setTaskTemplates({
+          uk: Array.isArray(parsed.taskTemplates.uk)
+            ? parsed.taskTemplates.uk.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            : DEFAULT_TASK_TEMPLATES.uk,
+          en: Array.isArray(parsed.taskTemplates.en)
+            ? parsed.taskTemplates.en.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            : DEFAULT_TASK_TEMPLATES.en,
+          ro: Array.isArray(parsed.taskTemplates.ro)
+            ? parsed.taskTemplates.ro.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            : DEFAULT_TASK_TEMPLATES.ro,
+        });
       }
       Alert.alert(t.done, t.fileSaved);
     } catch {
@@ -2621,6 +2735,38 @@ export default function App() {
         <Pressable style={[styles.secondaryButton, styles.testNotificationButton]} onPress={withInteractionFeedback(sendTestNotification)}>
           <Text style={styles.secondaryButtonText}>{t.testNotification}</Text>
         </Pressable>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.taskPresets}</Text>
+        <TextInput
+          style={styles.input}
+          value={presetDraft}
+          onChangeText={setPresetDraft}
+          placeholder={t.taskPresetPlaceholder}
+          placeholderTextColor="#9198aa"
+        />
+        <Pressable style={styles.secondaryButton} onPress={withInteractionFeedback(addTaskPreset)}>
+          <Text style={styles.secondaryButtonText}>{t.addPreset}</Text>
+        </Pressable>
+        <FlatList
+          data={taskTemplates[language]}
+          keyExtractor={(item) => `${language}-${item}`}
+          scrollEnabled={false}
+          ListEmptyComponent={<Text style={styles.emptyText}>{t.noPresets}</Text>}
+          renderItem={({ item }) => (
+            <View style={styles.entryCard}>
+              <Text style={styles.entryTask}>{item}</Text>
+              <View style={styles.taskActionRow}>
+                <Pressable onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: item })))}>
+                  <Text style={styles.markDoneText}>{t.addTask}</Text>
+                </Pressable>
+                <Pressable onPress={withInteractionFeedback(() => removeTaskPreset(item))}>
+                  <Text style={styles.deleteText}>{t.delete}</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+        />
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Backup</Text>
