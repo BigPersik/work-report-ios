@@ -560,9 +560,9 @@ export default function App() {
       return;
     }
     setWebMetaTag('theme-color', c.appBg);
-    setWebMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+    setWebMetaTag('viewport', 'width=device-width, initial-scale=1');
     setWebAppleMetaTag('apple-mobile-web-app-capable', 'yes');
-    setWebAppleMetaTag('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    setWebAppleMetaTag('apple-mobile-web-app-status-bar-style', 'black');
     document.documentElement.style.backgroundColor = c.appBg;
     document.body.style.backgroundColor = c.appBg;
     document.body.style.margin = '0';
@@ -1806,6 +1806,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 16,
+    paddingTop: Platform.OS === 'web' ? 0 : 16,
     paddingBottom: 92,
   },
   title: {
