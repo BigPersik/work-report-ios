@@ -45,6 +45,7 @@ type NewTask = {
   priority: Priority;
 };
 type Priority = 'low' | 'medium' | 'high';
+type PriorityFilter = Priority | 'all';
 
 type Language = 'uk' | 'en' | 'ro';
 type Screen = 'calendar' | 'report' | 'settings';
@@ -104,6 +105,8 @@ const translations: Record<
     testNotification: string;
     testNotificationBody: string;
     priority: string;
+    priorityFilter: string;
+    priorityAll: string;
     priorityLow: string;
     priorityMedium: string;
     priorityHigh: string;
@@ -194,6 +197,8 @@ const translations: Record<
     testNotification: 'Тест сповіщення',
     testNotificationBody: 'Перевірка сповіщення DayFlow',
     priority: 'Пріоритет',
+    priorityFilter: 'Фільтр пріоритету',
+    priorityAll: 'Всі',
     priorityLow: 'Низький',
     priorityMedium: 'Середній',
     priorityHigh: 'Високий',
@@ -283,6 +288,8 @@ const translations: Record<
     testNotification: 'Test notification',
     testNotificationBody: 'DayFlow notification test',
     priority: 'Priority',
+    priorityFilter: 'Priority filter',
+    priorityAll: 'All',
     priorityLow: 'Low',
     priorityMedium: 'Medium',
     priorityHigh: 'High',
@@ -372,6 +379,8 @@ const translations: Record<
     testNotification: 'Test notificare',
     testNotificationBody: 'Test notificare DayFlow',
     priority: 'Prioritate',
+    priorityFilter: 'Filtru prioritate',
+    priorityAll: 'Toate',
     priorityLow: 'Scazut',
     priorityMedium: 'Mediu',
     priorityHigh: 'Ridicat',
@@ -524,6 +533,7 @@ export default function App() {
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [screen, setScreen] = useState<Screen>('calendar');
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
@@ -930,8 +940,9 @@ export default function App() {
   }, [entries, hapticsEnabled, language, loading, notificationsEnabled, soundEnabled, t.error, t.saveError, themeMode, workDay]);
 
   const summary = useMemo(() => {
-    const total = entries.length;
-    const done = entries.filter((item) => item.completed).length;
+    const scheduled = entries.filter((item) => !item.inbox);
+    const total = scheduled.length;
+    const done = scheduled.filter((item) => item.completed).length;
     return { total, done, pending: total - done };
   }, [entries]);
 
@@ -1721,18 +1732,22 @@ export default function App() {
   };
 
   const tasksForDay = scheduledEntries
-    .filter((item) => item.date === form.date)
+    .filter((item) => item.date === form.date && (priorityFilter === 'all' || item.priority === priorityFilter))
     .sort((a, b) => a.time.localeCompare(b.time));
   const generalPendingTasks = [...scheduledEntries]
-    .filter((item) => !item.completed)
+    .filter(
+      (item) => !item.completed && (priorityFilter === 'all' || item.priority === priorityFilter),
+    )
     .sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
     });
-  const allTasks = [...scheduledEntries].sort((a, b) => {
-    const byDate = b.date.localeCompare(a.date);
-    return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
-  });
+  const allTasks = [...scheduledEntries]
+    .filter((item) => priorityFilter === 'all' || item.priority === priorityFilter)
+    .sort((a, b) => {
+      const byDate = b.date.localeCompare(a.date);
+      return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
+    });
   const hasTasksOnDay = (date: string) => scheduledEntries.some((item) => item.date === date);
   const getPriorityLabel = (priority: Priority) =>
     priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityMedium;
@@ -1742,6 +1757,9 @@ export default function App() {
       : priority === 'low'
         ? styles.priorityLow
         : styles.priorityMedium;
+  const priorityFilterOptions: PriorityFilter[] = ['all', 'low', 'medium', 'high'];
+  const getPriorityFilterLabel = (filter: PriorityFilter) =>
+    filter === 'all' ? t.priorityAll : getPriorityLabel(filter);
 
   const activeBreak = workDay.breaks.find((item) => !item.endedAt);
   const isDayRunning = Boolean(workDay.startedAt) && !workDay.endedAt;
@@ -2277,6 +2295,23 @@ export default function App() {
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.priorityFilter}</Text>
+        <View style={styles.languageButtons}>
+          {priorityFilterOptions.map((filter) => (
+            <Pressable
+              key={`calendar-filter-${filter}`}
+              onPress={withInteractionFeedback(() => setPriorityFilter(filter))}
+              style={[styles.languageButton, priorityFilter === filter && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, priorityFilter === filter && styles.languageButtonTextActive]}>
+                {getPriorityFilterLabel(filter)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.tasksForDay} {form.date}</Text>
         <FlatList
           data={tasksForDay}
@@ -2401,6 +2436,23 @@ export default function App() {
         <View style={styles.summaryBox}>
           <Text style={styles.summaryLabel}>{t.doneTasks}</Text>
           <Text style={styles.summaryValue}>{summary.done}</Text>
+        </View>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.priorityFilter}</Text>
+        <View style={styles.languageButtons}>
+          {priorityFilterOptions.map((filter) => (
+            <Pressable
+              key={`report-filter-${filter}`}
+              onPress={withInteractionFeedback(() => setPriorityFilter(filter))}
+              style={[styles.languageButton, priorityFilter === filter && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, priorityFilter === filter && styles.languageButtonTextActive]}>
+                {getPriorityFilterLabel(filter)}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       </View>
 
