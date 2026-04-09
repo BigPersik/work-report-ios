@@ -31,6 +31,8 @@ jobs:
         run: npm ci
 
       - name: Build web
+        env:
+          ICON_REV: ${{ github.sha }}
         run: npm run web:build
 
       - name: Prepare GitHub Pages paths
