@@ -472,6 +472,10 @@ export default function App() {
   const lastTimeHapticIndexRef = useRef<number>(-1);
   const dateWheelRef = useRef<FlatList<string> | null>(null);
   const timeWheelRef = useRef<FlatList<string> | null>(null);
+  const lastDateOffsetRef = useRef(0);
+  const lastTimeOffsetRef = useRef(0);
+  const dateMagnetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeMagnetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
@@ -1006,6 +1010,7 @@ export default function App() {
   };
 
   const handleDateWheelScroll = (offsetY: number) => {
+    lastDateOffsetRef.current = offsetY;
     const index = getWheelIndex(offsetY, dateOptions.length);
     if (index === lastDateIndexRef.current) {
       return;
@@ -1028,6 +1033,7 @@ export default function App() {
   };
 
   const handleTimeWheelScroll = (offsetY: number) => {
+    lastTimeOffsetRef.current = offsetY;
     const index = getWheelIndex(offsetY, timeOptions.length);
     if (index === lastTimeIndexRef.current) {
       return;
@@ -1047,6 +1053,30 @@ export default function App() {
         }
       }
     }
+  };
+
+  const applyDateMagnet = () => {
+    const index = getWheelIndex(lastDateOffsetRef.current, dateOptions.length);
+    dateWheelRef.current?.scrollToOffset({ offset: index * WHEEL_ITEM_HEIGHT, animated: true });
+  };
+
+  const applyTimeMagnet = () => {
+    const index = getWheelIndex(lastTimeOffsetRef.current, timeOptions.length);
+    timeWheelRef.current?.scrollToOffset({ offset: index * WHEEL_ITEM_HEIGHT, animated: true });
+  };
+
+  const scheduleDateMagnet = () => {
+    if (dateMagnetTimerRef.current) {
+      clearTimeout(dateMagnetTimerRef.current);
+    }
+    dateMagnetTimerRef.current = setTimeout(applyDateMagnet, 90);
+  };
+
+  const scheduleTimeMagnet = () => {
+    if (timeMagnetTimerRef.current) {
+      clearTimeout(timeMagnetTimerRef.current);
+    }
+    timeMagnetTimerRef.current = setTimeout(applyTimeMagnet, 90);
   };
 
   const addTask = () => {
@@ -1069,6 +1099,17 @@ export default function App() {
     setEntries((prev) => [entry, ...prev]);
     setForm((prev) => ({ ...INITIAL_FORM, date: prev.date, time: prev.time }));
   };
+
+  useEffect(() => {
+    return () => {
+      if (dateMagnetTimerRef.current) {
+        clearTimeout(dateMagnetTimerRef.current);
+      }
+      if (timeMagnetTimerRef.current) {
+        clearTimeout(timeMagnetTimerRef.current);
+      }
+    };
+  }, []);
 
   const removeTask = (id: string) => {
     setEntries((prev) => prev.filter((item) => item.id !== id));
@@ -1617,6 +1658,8 @@ export default function App() {
                 contentContainerStyle={styles.wheelContent}
                 scrollEventThrottle={16}
                 onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
+                onScrollEndDrag={scheduleDateMagnet}
+                onMomentumScrollEnd={scheduleDateMagnet}
                 onScrollToIndexFailed={(info) => {
                   dateWheelRef.current?.scrollToOffset({
                     offset: info.index * WHEEL_ITEM_HEIGHT,
@@ -1662,6 +1705,8 @@ export default function App() {
                 contentContainerStyle={styles.wheelContent}
                 scrollEventThrottle={16}
                 onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
+                onScrollEndDrag={scheduleTimeMagnet}
+                onMomentumScrollEnd={scheduleTimeMagnet}
                 onScrollToIndexFailed={(info) => {
                   timeWheelRef.current?.scrollToOffset({
                     offset: info.index * WHEEL_ITEM_HEIGHT,
