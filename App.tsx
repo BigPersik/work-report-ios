@@ -14,7 +14,8 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
+  Pressable as RNPressable,
+  PressableProps,
   SafeAreaView,
   ScrollView,
   Modal,
@@ -92,6 +93,27 @@ const formatLocalTime = (date: Date) => {
   return `${h}:${m}`;
 };
 const today = formatLocalDate(new Date());
+
+const Pressable = ({ style, ...props }: PressableProps) => (
+  <RNPressable
+    {...props}
+    style={(state) => {
+      const resolved = typeof style === 'function' ? style(state) : style;
+      if (!state.pressed) {
+        return resolved;
+      }
+      const flattened = StyleSheet.flatten(resolved) ?? {};
+      const existingTransform = Array.isArray(flattened.transform) ? flattened.transform : [];
+      return [
+        resolved,
+        {
+          opacity: 0.9,
+          transform: [...existingTransform, { scale: 0.985 }],
+        },
+      ];
+    }}
+  />
+);
 
 const translations: Record<
   Language,
