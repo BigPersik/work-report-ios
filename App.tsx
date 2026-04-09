@@ -2802,7 +2802,16 @@ export default function App() {
             placeholder={t.taskPresetPlaceholder}
             placeholderTextColor="#9198aa"
           />
-          <Pressable style={styles.presetAddButton} onPress={withInteractionFeedback(addTaskPreset)}>
+          <Pressable
+            style={[
+              styles.presetAddButton,
+              {
+                backgroundColor: isColorful ? '#4F46E5' : isDark ? '#1d4ed8' : '#2563eb',
+                borderColor: isDark || isColorful ? '#93c5fd' : '#bfdbfe',
+              },
+            ]}
+            onPress={withInteractionFeedback(addTaskPreset)}
+          >
             <Text style={styles.presetAddButtonText}>+</Text>
           </Pressable>
         </View>
@@ -2811,15 +2820,28 @@ export default function App() {
         ) : (
           <View style={[styles.templatesRow, styles.presetListWrap]}>
             {taskTemplates[language].map((item) => (
-              <View key={`${language}-${item}`} style={[styles.templateChip, styles.presetPill]}>
+              <View
+                key={`${language}-${item}`}
+                style={[
+                  styles.templateChip,
+                  styles.presetPill,
+                  {
+                    backgroundColor: isDark || isColorful ? 'rgba(99,102,241,0.18)' : '#eef4ff',
+                    borderColor: isDark || isColorful ? 'rgba(129,140,248,0.45)' : '#c7dafd',
+                  },
+                ]}
+              >
                 <Pressable onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: item })))}>
-                  <Text style={styles.templateChipText}>{item}</Text>
+                  <Text style={[styles.templateChipText, { color: isDark || isColorful ? '#c7d2fe' : '#1e40af' }]}>{item}</Text>
                 </Pressable>
                 <Pressable
-                  style={styles.presetInlineDelete}
+                  style={[
+                    styles.presetInlineDelete,
+                    { backgroundColor: isDark || isColorful ? 'rgba(15,23,42,0.45)' : '#dbe6ff' },
+                  ]}
                   onPress={withInteractionFeedback(() => removeTaskPreset(item))}
                 >
-                  <Text style={styles.presetInlineDeleteText}>×</Text>
+                  <Text style={[styles.presetInlineDeleteText, { color: isDark || isColorful ? '#e2e8f0' : '#1e40af' }]}>×</Text>
                 </Pressable>
               </View>
             ))}
@@ -3564,8 +3586,15 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 12,
     backgroundColor: '#2563eb',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   presetAddButtonText: {
     color: '#ffffff',
@@ -3582,6 +3611,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   presetInlineDelete: {
     marginLeft: 2,
