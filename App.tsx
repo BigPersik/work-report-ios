@@ -482,6 +482,8 @@ export default function App() {
   const t = translations[language];
   const isDark = themeMode === 'dark';
   const isColorful = themeMode === 'colorful';
+  const taskMainTextColor = isDark || isColorful ? '#B8C4DE' : '#22242b';
+  const taskMetaTextColor = isDark || isColorful ? '#93A4C6' : '#656a7a';
   const c = {
     appBg: isColorful ? '#0B1220' : isDark ? '#0f172a' : '#eef3ff',
     cardBg: isColorful ? '#111827' : isDark ? '#111b2f' : '#ffffff',
@@ -1750,10 +1752,10 @@ export default function App() {
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.currentTask}</Text>
         {currentTask ? (
           <>
-            <Text style={[styles.entryTask, { color: c.textPrimary }]}>{currentTask.date} {currentTask.time}</Text>
-            <Text style={[styles.entryNotes, { color: c.textPrimary }]}>{currentTask.task}</Text>
-            {!!currentTask.notes && <Text style={[styles.entryNotes, { color: c.textSecondary }]}>{currentTask.notes}</Text>}
-            <Text style={[styles.entryNotes, { color: c.textSecondary }]}>
+            <Text style={[styles.entryTask, { color: taskMetaTextColor }]}>{currentTask.date} {currentTask.time}</Text>
+            <Text style={[styles.entryNotes, { color: taskMainTextColor }]}>{currentTask.task}</Text>
+            {!!currentTask.notes && <Text style={[styles.entryNotes, { color: taskMetaTextColor }]}>{currentTask.notes}</Text>}
+            <Text style={[styles.entryNotes, { color: taskMetaTextColor }]}>
               {t.taskTime}: {formatDuration(getTaskTrackedMs(currentTask, nowTick))}
             </Text>
             <View style={styles.taskActionRow}>
@@ -1776,8 +1778,8 @@ export default function App() {
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.nextTask}</Text>
         {nextTask ? (
           <>
-            <Text style={[styles.entryTask, { color: c.textPrimary }]}>{nextTask.date} {nextTask.time}</Text>
-            <Text style={[styles.entryNotes, { color: c.textPrimary }]}>{nextTask.task}</Text>
+            <Text style={[styles.entryTask, { color: taskMetaTextColor }]}>{nextTask.date} {nextTask.time}</Text>
+            <Text style={[styles.entryNotes, { color: taskMainTextColor }]}>{nextTask.task}</Text>
             <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(() => startTaskNow(nextTask.id))}>
               <Text style={styles.buttonText}>{t.startNow}</Text>
             </Pressable>
