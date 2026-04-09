@@ -2794,38 +2794,37 @@ export default function App() {
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.taskPresets}</Text>
-        <TextInput
-          style={styles.input}
-          value={presetDraft}
-          onChangeText={setPresetDraft}
-          placeholder={t.taskPresetPlaceholder}
-          placeholderTextColor="#9198aa"
-        />
-        <Pressable style={styles.secondaryButton} onPress={withInteractionFeedback(addTaskPreset)}>
-          <Text style={styles.secondaryButtonText}>{t.addPreset}</Text>
-        </Pressable>
-        <FlatList
-          data={taskTemplates[language]}
-          keyExtractor={(item) => `${language}-${item}`}
-          scrollEnabled={false}
-          ListEmptyComponent={<Text style={styles.emptyText}>{t.noPresets}</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.presetChipRow}>
-              <Pressable
-                style={[styles.templateChip, styles.presetChip]}
-                onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: item })))}
-              >
-                <Text style={styles.templateChipText}>{item}</Text>
-              </Pressable>
-              <Pressable
-                style={styles.presetDeleteButton}
-                onPress={withInteractionFeedback(() => removeTaskPreset(item))}
-              >
-                <Text style={styles.presetDeleteButtonText}>×</Text>
-              </Pressable>
-            </View>
-          )}
-        />
+        <View style={styles.presetInputRow}>
+          <TextInput
+            style={[styles.input, styles.presetInput]}
+            value={presetDraft}
+            onChangeText={setPresetDraft}
+            placeholder={t.taskPresetPlaceholder}
+            placeholderTextColor="#9198aa"
+          />
+          <Pressable style={styles.presetAddButton} onPress={withInteractionFeedback(addTaskPreset)}>
+            <Text style={styles.presetAddButtonText}>+</Text>
+          </Pressable>
+        </View>
+        {taskTemplates[language].length === 0 ? (
+          <Text style={styles.emptyText}>{t.noPresets}</Text>
+        ) : (
+          <View style={[styles.templatesRow, styles.presetListWrap]}>
+            {taskTemplates[language].map((item) => (
+              <View key={`${language}-${item}`} style={[styles.templateChip, styles.presetPill]}>
+                <Pressable onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: item })))}>
+                  <Text style={styles.templateChipText}>{item}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.presetInlineDelete}
+                  onPress={withInteractionFeedback(() => removeTaskPreset(item))}
+                >
+                  <Text style={styles.presetInlineDeleteText}>×</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Backup</Text>
@@ -3551,30 +3550,52 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
   },
-  presetChipRow: {
+  presetInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  presetInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  presetAddButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetAddButtonText: {
+    color: '#ffffff',
+    fontSize: 24,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  presetListWrap: {
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  presetPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
   },
-  presetChip: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  presetDeleteButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#f1b4b4',
-    backgroundColor: '#fff1f1',
+  presetInlineDelete: {
+    marginLeft: 2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#dbe6ff',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  presetDeleteButtonText: {
-    color: '#dc2626',
-    fontSize: 16,
+  presetInlineDeleteText: {
+    color: '#1e40af',
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 18,
+    lineHeight: 14,
   },
 });
