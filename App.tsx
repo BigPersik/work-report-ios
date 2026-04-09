@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -393,6 +394,7 @@ const WHEEL_ITEM_HEIGHT = 40;
 const WHEEL_VISIBLE_ROWS = 5;
 const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ROWS;
 const WHEEL_CENTER_OFFSET = (WHEEL_CONTAINER_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
+const USE_NATIVE_IOS_PICKER = true;
 const CLICK_SOUND_URI =
   'data:audio/wav;base64,UklGRjwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YRgAAAAAABkAMgBKAGAAdABmAE8AOQAjAAwAAAAA8f/k/9f/yv/N/9f/6f8AAP//';
 
@@ -906,6 +908,21 @@ export default function App() {
 
   const selectedDateIndex = Math.max(0, dateOptions.indexOf(form.date));
   const selectedTimeIndex = Math.max(0, timeOptions.indexOf(form.time));
+  const isNativeIosPicker = USE_NATIVE_IOS_PICKER && Platform.OS === 'ios';
+  const formDateObject = useMemo(() => {
+    const candidate = new Date(`${form.date}T00:00:00`);
+    return Number.isNaN(candidate.getTime()) ? new Date() : candidate;
+  }, [form.date]);
+  const formTimeObject = useMemo(() => {
+    const [hRaw, mRaw] = form.time.split(':');
+    const h = Number.parseInt(hRaw ?? '8', 10);
+    const m = Number.parseInt(mRaw ?? '30', 10);
+    const safeH = Number.isNaN(h) ? 8 : Math.max(0, Math.min(23, h));
+    const safeM = Number.isNaN(m) ? 30 : Math.max(0, Math.min(59, m));
+    const base = new Date();
+    base.setHours(safeH, safeM, 0, 0);
+    return base;
+  }, [form.time]);
 
   const formatReadableDate = (value: string) => {
     const date = new Date(`${value}T00:00:00`);
@@ -915,6 +932,28 @@ export default function App() {
       month: 'short',
       year: 'numeric',
     });
+  };
+
+  const handleNativeDateChange = (_event: unknown, value?: Date) => {
+    if (!value) {
+      return;
+    }
+    void selectDate(formatLocalDate(value), false);
+  };
+
+  const handleNativeTimeChange = (_event: unknown, value?: Date) => {
+    if (!value) {
+      return;
+    }
+    const minutes = value.getMinutes();
+    const roundedMinutes = Math.round(minutes / 15) * 15;
+    const rounded = new Date(value);
+    if (roundedMinutes >= 60) {
+      rounded.setHours((rounded.getHours() + 1) % 24, 0, 0, 0);
+    } else {
+      rounded.setMinutes(roundedMinutes, 0, 0);
+    }
+    void selectTime(formatLocalTime(rounded), false);
   };
 
   const updateField = (field: keyof NewTask, value: string) => {
@@ -1531,96 +1570,128 @@ export default function App() {
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.addTask}</Text>
         <Text style={styles.menuSubtitle}>{t.selectDay}: {formatReadableDate(form.date)}</Text>
-        <View style={styles.pickerRow}>
-          <View style={[styles.dateWheelContainer, styles.halfWheel]}>
-            <FlatList
-              ref={dateWheelRef}
-              data={dateOptions}
-              keyExtractor={(item) => item}
-              initialScrollIndex={selectedDateIndex}
-              getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
-              showsVerticalScrollIndicator={false}
-              snapToInterval={WHEEL_ITEM_HEIGHT}
-              snapToAlignment="start"
-              decelerationRate={Platform.OS === 'ios' ? 0.992 : 'fast'}
-              bounces={false}
-              contentContainerStyle={styles.wheelContent}
-              scrollEventThrottle={16}
-              onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
-              onScrollToIndexFailed={(info) => {
-                dateWheelRef.current?.scrollToOffset({
-                  offset: info.index * WHEEL_ITEM_HEIGHT,
-                  animated: false,
-                });
-              }}
-              renderItem={({ item }) => {
-                const selected = item === form.date;
-                return (
-                  <Pressable
-                    style={[styles.dateWheelItem, selected && styles.dateWheelItemSelected]}
-                    onPress={() => {
-                      triggerTapSound();
-                      triggerTapHaptic();
-                      void selectDate(item, false);
-                      const idx = dateOptions.indexOf(item);
-                      if (idx >= 0) {
-                        dateWheelRef.current?.scrollToIndex({ index: idx, animated: true });
-                      }
-                    }}
-                  >
-                    <Text style={[styles.dateWheelText, selected && styles.dateWheelTextSelected]}>
-                      {formatReadableDate(item)}
-                    </Text>
-                  </Pressable>
-                );
-              }}
-            />
-            <View pointerEvents="none" style={styles.wheelCenterBand} />
+        {isNativeIosPicker ? (
+          <View style={styles.nativePickerRow}>
+            <View style={styles.nativePickerHalf}>
+              <DateTimePicker
+                value={formDateObject}
+                mode="date"
+                display="spinner"
+                onChange={handleNativeDateChange}
+                accentColor="#2563eb"
+                textColor="#1b1b1f"
+                themeVariant={isDark || isColorful ? 'dark' : 'light'}
+                style={styles.nativePicker}
+              />
+            </View>
+            <View style={styles.nativePickerHalf}>
+              <DateTimePicker
+                value={formTimeObject}
+                mode="time"
+                is24Hour
+                display="spinner"
+                minuteInterval={15}
+                onChange={handleNativeTimeChange}
+                accentColor="#2563eb"
+                textColor="#1b1b1f"
+                themeVariant={isDark || isColorful ? 'dark' : 'light'}
+                style={styles.nativePicker}
+              />
+            </View>
           </View>
-          <View style={[styles.timeWheelContainer, styles.halfWheel]}>
-            <FlatList
-              ref={timeWheelRef}
-              data={timeOptions}
-              keyExtractor={(item) => item}
-              initialScrollIndex={selectedTimeIndex}
-              getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
-              showsVerticalScrollIndicator={false}
-              snapToInterval={WHEEL_ITEM_HEIGHT}
-              snapToAlignment="start"
-              decelerationRate={Platform.OS === 'ios' ? 0.992 : 'fast'}
-              bounces={false}
-              contentContainerStyle={styles.wheelContent}
-              scrollEventThrottle={16}
-              onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
-              onScrollToIndexFailed={(info) => {
-                timeWheelRef.current?.scrollToOffset({
-                  offset: info.index * WHEEL_ITEM_HEIGHT,
-                  animated: false,
-                });
-              }}
-              renderItem={({ item }) => {
-                const selected = item === form.time;
-                return (
-                  <Pressable
-                    style={[styles.timeWheelItem, selected && styles.timeWheelItemSelected]}
-                    onPress={() => {
-                      triggerTapSound();
-                      triggerTapHaptic();
-                      void selectTime(item, false);
-                      const idx = timeOptions.indexOf(item);
-                      if (idx >= 0) {
-                        timeWheelRef.current?.scrollToIndex({ index: idx, animated: true });
-                      }
-                    }}
-                  >
-                    <Text style={[styles.timeWheelText, selected && styles.timeWheelTextSelected]}>{item}</Text>
-                  </Pressable>
-                );
-              }}
-            />
-            <View pointerEvents="none" style={styles.wheelCenterBand} />
+        ) : (
+          // Backup picker kept intentionally for quick rollback.
+          <View style={styles.pickerRow}>
+            <View style={[styles.dateWheelContainer, styles.halfWheel]}>
+              <FlatList
+                ref={dateWheelRef}
+                data={dateOptions}
+                keyExtractor={(item) => item}
+                initialScrollIndex={selectedDateIndex}
+                getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
+                showsVerticalScrollIndicator={false}
+                snapToInterval={WHEEL_ITEM_HEIGHT}
+                snapToAlignment="start"
+                decelerationRate={Platform.OS === 'ios' ? 0.992 : 'fast'}
+                bounces={false}
+                contentContainerStyle={styles.wheelContent}
+                scrollEventThrottle={16}
+                onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
+                onScrollToIndexFailed={(info) => {
+                  dateWheelRef.current?.scrollToOffset({
+                    offset: info.index * WHEEL_ITEM_HEIGHT,
+                    animated: false,
+                  });
+                }}
+                renderItem={({ item }) => {
+                  const selected = item === form.date;
+                  return (
+                    <Pressable
+                      style={[styles.dateWheelItem, selected && styles.dateWheelItemSelected]}
+                      onPress={() => {
+                        triggerTapSound();
+                        triggerTapHaptic();
+                        void selectDate(item, false);
+                        const idx = dateOptions.indexOf(item);
+                        if (idx >= 0) {
+                          dateWheelRef.current?.scrollToIndex({ index: idx, animated: true });
+                        }
+                      }}
+                    >
+                      <Text style={[styles.dateWheelText, selected && styles.dateWheelTextSelected]}>
+                        {formatReadableDate(item)}
+                      </Text>
+                    </Pressable>
+                  );
+                }}
+              />
+              <View pointerEvents="none" style={styles.wheelCenterBand} />
+            </View>
+            <View style={[styles.timeWheelContainer, styles.halfWheel]}>
+              <FlatList
+                ref={timeWheelRef}
+                data={timeOptions}
+                keyExtractor={(item) => item}
+                initialScrollIndex={selectedTimeIndex}
+                getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
+                showsVerticalScrollIndicator={false}
+                snapToInterval={WHEEL_ITEM_HEIGHT}
+                snapToAlignment="start"
+                decelerationRate={Platform.OS === 'ios' ? 0.992 : 'fast'}
+                bounces={false}
+                contentContainerStyle={styles.wheelContent}
+                scrollEventThrottle={16}
+                onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
+                onScrollToIndexFailed={(info) => {
+                  timeWheelRef.current?.scrollToOffset({
+                    offset: info.index * WHEEL_ITEM_HEIGHT,
+                    animated: false,
+                  });
+                }}
+                renderItem={({ item }) => {
+                  const selected = item === form.time;
+                  return (
+                    <Pressable
+                      style={[styles.timeWheelItem, selected && styles.timeWheelItemSelected]}
+                      onPress={() => {
+                        triggerTapSound();
+                        triggerTapHaptic();
+                        void selectTime(item, false);
+                        const idx = timeOptions.indexOf(item);
+                        if (idx >= 0) {
+                          timeWheelRef.current?.scrollToIndex({ index: idx, animated: true });
+                        }
+                      }}
+                    >
+                      <Text style={[styles.timeWheelText, selected && styles.timeWheelTextSelected]}>{item}</Text>
+                    </Pressable>
+                  );
+                }}
+              />
+              <View pointerEvents="none" style={styles.wheelCenterBand} />
+            </View>
           </View>
-        </View>
+        )}
         <TextInput
           style={styles.input}
           value={form.task}
@@ -2091,6 +2162,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 8,
+  },
+  nativePickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  nativePickerHalf: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#dbe3f5',
+    borderRadius: 10,
+    backgroundColor: '#f9fbff',
+    overflow: 'hidden',
+    height: WHEEL_CONTAINER_HEIGHT,
+    justifyContent: 'center',
+  },
+  nativePicker: {
+    height: WHEEL_CONTAINER_HEIGHT,
+    width: '100%',
   },
   halfWheel: {
     flex: 1,
