@@ -5,7 +5,9 @@ import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as LocalAuthentication from 'expo-local-authentication';
 import * as Notifications from 'expo-notifications';
+import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -33,6 +35,7 @@ type TaskEntry = {
   time: string;
   task: string;
   notes: string;
+  tag?: string;
   priority: Priority;
   inbox?: boolean;
   completed: boolean;
@@ -46,10 +49,13 @@ type NewTask = {
   time: string;
   task: string;
   notes: string;
+  tag: string;
   priority: Priority;
 };
 type Priority = 'low' | 'medium' | 'high';
 type PriorityFilter = Priority | 'all';
+type StatusFilter = 'all' | 'in_progress' | 'completed';
+type ReminderLead = 5 | 10 | 15;
 
 type Language = 'uk' | 'en' | 'ro';
 type Screen = 'calendar' | 'report' | 'settings';
@@ -78,6 +84,9 @@ const HAPTICS_KEY = 'work-report-haptics-v1';
 const NOTIFICATIONS_KEY = 'work-report-notifications-v1';
 const PRIORITY_FILTER_KEY = 'work-report-priority-filter-v1';
 const TASK_TEMPLATES_KEY = 'work-report-task-templates-v1';
+const STATUS_FILTER_KEY = 'work-report-status-filter-v1';
+const REMINDER_LEAD_KEY = 'work-report-reminder-lead-v1';
+const LOCK_ENABLED_KEY = 'work-report-lock-enabled-v1';
 const DEFAULT_TASK_TEMPLATES: Record<Language, string[]> = {
   uk: ['Щоденний звіт', 'Code review', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
   en: ['Daily report', 'Code review', 'Team meeting', 'Fix bug', 'Task planning'],
@@ -316,7 +325,7 @@ const translations: Record<
     done: 'Готово',
     fileSaved: 'Файл збережено',
     exportError: 'Не вдалося зробити експорт.',
-    csvHeader: 'Дата,Час,Задача,Пріоритет,Коментар,Статус,Час задачі',
+    csvHeader: 'Дата,Час,Задача,Тег,Пріоритет,Коментар,Статус,Час задачі',
   },
   en: {
     title: 'DayFlow',
@@ -415,7 +424,7 @@ const translations: Record<
     done: 'Done',
     fileSaved: 'File saved',
     exportError: 'Failed to export.',
-    csvHeader: 'Date,Time,Task,Priority,Notes,Status,Task Time',
+    csvHeader: 'Date,Time,Task,Tag,Priority,Notes,Status,Task Time',
   },
   ro: {
     title: 'DayFlow',
@@ -514,7 +523,7 @@ const translations: Record<
     done: 'Gata',
     fileSaved: 'Fișier salvat',
     exportError: 'Exportul a eșuat.',
-    csvHeader: 'Data,Ora,Sarcină,Prioritate,Comentariu,Status,Timp sarcină',
+    csvHeader: 'Data,Ora,Sarcină,Tag,Prioritate,Comentariu,Status,Timp sarcină',
   },
 };
 
@@ -523,6 +532,7 @@ const INITIAL_FORM: NewTask = {
   time: '08:30',
   task: '',
   notes: '',
+  tag: '',
   priority: 'medium',
 };
 
@@ -598,8 +608,17 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [screen, setScreen] = useState<Screen>('calendar');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showArchiveOnly, setShowArchiveOnly] = useState(false);
+  const [inboxOnly, setInboxOnly] = useState(false);
+  const [lockEnabled, setLockEnabled] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(Platform.OS === 'web');
+  const [reminderLeadMinutes, setReminderLeadMinutes] = useState<ReminderLead>(5);
   const [taskTemplates, setTaskTemplates] = useState<Record<Language, string[]>>(DEFAULT_TASK_TEMPLATES);
   const [presetDraft, setPresetDraft] = useState('');
+  const [undoSnapshot, setUndoSnapshot] = useState<TaskEntry[] | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentTaskId, setCommentTaskId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
@@ -932,6 +951,11 @@ export default function App() {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
+    return () => {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -966,6 +990,9 @@ export default function App() {
           savedNotifications,
           savedPriorityFilter,
           savedTaskTemplates,
+          savedStatusFilter,
+          savedReminderLead,
+          savedLockEnabled,
         ] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEY),
           AsyncStorage.getItem(LANGUAGE_KEY),
@@ -976,6 +1003,9 @@ export default function App() {
           AsyncStorage.getItem(NOTIFICATIONS_KEY),
           AsyncStorage.getItem(PRIORITY_FILTER_KEY),
           AsyncStorage.getItem(TASK_TEMPLATES_KEY),
+          AsyncStorage.getItem(STATUS_FILTER_KEY),
+          AsyncStorage.getItem(REMINDER_LEAD_KEY),
+          AsyncStorage.getItem(LOCK_ENABLED_KEY),
         ]);
         if (raw) {
           const parsed: TaskEntry[] = JSON.parse(raw);
@@ -985,6 +1015,7 @@ export default function App() {
             time: item.time ?? '09:00',
             task: item.task ?? '',
             notes: item.notes ?? '',
+            tag: item.tag ?? '',
             priority:
               item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
                 ? item.priority
@@ -1019,6 +1050,19 @@ export default function App() {
           savedPriorityFilter === 'high'
         ) {
           setPriorityFilter(savedPriorityFilter);
+        }
+        if (
+          savedStatusFilter === 'all' ||
+          savedStatusFilter === 'in_progress' ||
+          savedStatusFilter === 'completed'
+        ) {
+          setStatusFilter(savedStatusFilter);
+        }
+        if (savedReminderLead === '5' || savedReminderLead === '10' || savedReminderLead === '15') {
+          setReminderLeadMinutes(Number(savedReminderLead) as ReminderLead);
+        }
+        if (savedLockEnabled === '0' || savedLockEnabled === '1') {
+          setLockEnabled(savedLockEnabled === '1');
         }
         if (savedTaskTemplates) {
           const parsedTemplates = JSON.parse(savedTaskTemplates) as Partial<Record<Language, string[]>>;
@@ -1058,6 +1102,18 @@ export default function App() {
     if (loading) {
       return;
     }
+    if (!lockEnabled) {
+      setIsUnlocked(true);
+      return;
+    }
+    setIsUnlocked(false);
+    void unlockWithBiometrics();
+  }, [loading, lockEnabled]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
     Promise.all([
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries)),
       AsyncStorage.setItem(LANGUAGE_KEY, language),
@@ -1068,6 +1124,9 @@ export default function App() {
       AsyncStorage.setItem(NOTIFICATIONS_KEY, notificationsEnabled ? '1' : '0'),
       AsyncStorage.setItem(PRIORITY_FILTER_KEY, priorityFilter),
       AsyncStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(taskTemplates)),
+      AsyncStorage.setItem(STATUS_FILTER_KEY, statusFilter),
+      AsyncStorage.setItem(REMINDER_LEAD_KEY, String(reminderLeadMinutes)),
+      AsyncStorage.setItem(LOCK_ENABLED_KEY, lockEnabled ? '1' : '0'),
     ]).catch(() => {
       Alert.alert(t.error, t.saveError);
     });
@@ -1078,6 +1137,9 @@ export default function App() {
     loading,
     notificationsEnabled,
     priorityFilter,
+    statusFilter,
+    reminderLeadMinutes,
+    lockEnabled,
     soundEnabled,
     t.error,
     t.saveError,
@@ -1375,6 +1437,7 @@ export default function App() {
       time: form.time,
       task: form.task.trim(),
       notes: form.notes.trim(),
+      tag: form.tag.trim() || undefined,
       priority: form.priority,
       inbox: false,
       completed: false,
@@ -1399,6 +1462,7 @@ export default function App() {
       time: '08:30',
       task: form.task.trim(),
       notes: form.notes.trim(),
+      tag: form.tag.trim() || undefined,
       priority: form.priority,
       inbox: true,
       completed: false,
@@ -1474,6 +1538,30 @@ export default function App() {
       ),
     );
     closeCommentModal();
+  };
+
+  const stashUndoSnapshot = (prev: TaskEntry[]) => {
+    setUndoSnapshot(prev);
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+    undoTimerRef.current = setTimeout(() => {
+      setUndoSnapshot(null);
+      undoTimerRef.current = null;
+    }, 5000);
+  };
+
+  const undoLastAction = () => {
+    if (!undoSnapshot) {
+      return;
+    }
+    animateNextLayout();
+    setEntries(undoSnapshot);
+    setUndoSnapshot(null);
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
   };
 
   const closeCommentModal = () => {
@@ -1572,17 +1660,17 @@ export default function App() {
     const taskAt = parseDateTime(entry);
     const now = new Date();
     const atMs = taskAt.getTime();
-    const minus5 = new Date(atMs - 5 * 60 * 1000);
-    if (minus5.getTime() > now.getTime()) {
+    const leadDate = new Date(atMs - reminderLeadMinutes * 60 * 1000);
+    if (leadDate.getTime() > now.getTime()) {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'DayFlow reminder',
-          body: `In 5 minutes: ${entry.task}`,
+          body: `In ${reminderLeadMinutes} minutes: ${entry.task}`,
           sound: true,
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: minus5,
+          date: leadDate,
         },
       });
     }
@@ -1632,9 +1720,32 @@ export default function App() {
     });
   };
 
+  const unlockWithBiometrics = async () => {
+    if (Platform.OS === 'web') {
+      setIsUnlocked(true);
+      return;
+    }
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const enrolled = await LocalAuthentication.isEnrolledAsync();
+    if (!hasHardware || !enrolled) {
+      setIsUnlocked(true);
+      return;
+    }
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Unlock DayFlow',
+      fallbackLabel: 'Use passcode',
+    });
+    if (result.success) {
+      setIsUnlocked(true);
+    }
+  };
+
   const removeTask = (id: string) => {
     animateNextLayout();
-    setEntries((prev) => prev.filter((item) => item.id !== id));
+    setEntries((prev) => {
+      stashUndoSnapshot(prev);
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   const markDone = (id: string) => {
@@ -1642,7 +1753,9 @@ export default function App() {
     const nowMs = new Date(nowIso).getTime();
     animateNextLayout();
     setEntries((prev) =>
-      prev.map((item) => {
+      {
+        stashUndoSnapshot(prev);
+        return prev.map((item) => {
         if (item.id !== id) {
           return item;
         }
@@ -1653,7 +1766,8 @@ export default function App() {
           trackedMs: item.trackedMs + extra,
           trackingStartedAt: undefined,
         };
-      }),
+      });
+      },
     );
     void stopOngoingTaskNotification();
   };
@@ -1663,7 +1777,9 @@ export default function App() {
     const nowMs = new Date(nowIso).getTime();
     animateNextLayout();
     setEntries((prev) =>
-      prev.map((item) => {
+      {
+        stashUndoSnapshot(prev);
+        return prev.map((item) => {
         if (item.id !== id) {
           return item;
         }
@@ -1677,7 +1793,8 @@ export default function App() {
           trackedMs: item.trackedMs + extra,
           trackingStartedAt: undefined,
         };
-      }),
+      });
+      },
     );
     void stopOngoingTaskNotification();
   };
@@ -1782,6 +1899,7 @@ export default function App() {
         item.date,
         item.time,
         item.task,
+        item.tag ?? '',
         getPriorityLabel(item.priority),
         item.notes,
         item.completed ? t.completed : t.pending,
@@ -1835,7 +1953,9 @@ export default function App() {
       `${t.tasksForDay}:`,
       ...dayItems.map((item) => {
         const pr = item.priority === 'high' ? t.priorityHigh : item.priority === 'low' ? t.priorityLow : t.priorityMedium;
-        return `- ${item.time} | ${item.task} | ${pr} | ${item.completed ? t.completed : t.pending}`;
+        return `- ${item.time} | ${item.task}${item.tag ? ` #${item.tag}` : ''} | ${pr} | ${
+          item.completed ? t.completed : t.pending
+        }`;
       }),
     ];
     const content = lines.join('\n');
@@ -1853,6 +1973,37 @@ export default function App() {
     }
   };
 
+  const exportPdfReport = async () => {
+    try {
+      const rows = allTasks
+        .slice(0, 200)
+        .map(
+          (item) =>
+            `<tr><td>${item.date} ${item.time}</td><td>${item.task}</td><td>${getPriorityLabel(
+              item.priority,
+            )}</td><td>${item.completed ? t.completed : t.pending}</td><td>${formatDuration(
+              getTaskTrackedMs(item, nowTick),
+            )}</td></tr>`,
+        )
+        .join('');
+      const html = `<!doctype html><html><body style="font-family: -apple-system, Segoe UI, Arial; padding: 20px;">
+      <h1>DayFlow Report</h1>
+      <p>Total: ${summary.total} | Done: ${summary.done} | Pending: ${summary.pending}</p>
+      <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%;">
+      <thead><tr><th>Date</th><th>Task</th><th>Priority</th><th>Status</th><th>Tracked</th></tr></thead>
+      <tbody>${rows}</tbody></table></body></html>`;
+      const file = await Print.printToFileAsync({ html });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf' });
+      } else {
+        Alert.alert(t.done, `${t.fileSaved}: ${file.uri}`);
+      }
+    } catch {
+      Alert.alert(t.error, t.exportError);
+    }
+  };
+
   const exportJsonBackup = async () => {
     const payload = {
       exportedAt: new Date().toISOString(),
@@ -1865,6 +2016,9 @@ export default function App() {
       notificationsEnabled,
       priorityFilter,
       taskTemplates,
+      statusFilter,
+      reminderLeadMinutes,
+      lockEnabled,
     };
     const fileUri = `${FileSystem.cacheDirectory}dayflow-backup-${Date.now()}.json`;
     try {
@@ -1904,6 +2058,9 @@ export default function App() {
         notificationsEnabled?: boolean;
         priorityFilter?: PriorityFilter;
         taskTemplates?: Partial<Record<Language, string[]>>;
+        statusFilter?: StatusFilter;
+        reminderLeadMinutes?: ReminderLead;
+        lockEnabled?: boolean;
       };
       if (Array.isArray(parsed.entries)) {
         setEntries(
@@ -1963,25 +2120,62 @@ export default function App() {
             : DEFAULT_TASK_TEMPLATES.ro,
         });
       }
+      if (
+        parsed.statusFilter === 'all' ||
+        parsed.statusFilter === 'in_progress' ||
+        parsed.statusFilter === 'completed'
+      ) {
+        setStatusFilter(parsed.statusFilter);
+      }
+      if (
+        parsed.reminderLeadMinutes === 5 ||
+        parsed.reminderLeadMinutes === 10 ||
+        parsed.reminderLeadMinutes === 15
+      ) {
+        setReminderLeadMinutes(parsed.reminderLeadMinutes);
+      }
+      if (typeof parsed.lockEnabled === 'boolean') {
+        setLockEnabled(parsed.lockEnabled);
+      }
       Alert.alert(t.done, t.fileSaved);
     } catch {
       Alert.alert(t.error, t.loadError);
     }
   };
 
-  const tasksForDay = scheduledEntries
-    .filter((item) => item.date === form.date && (priorityFilter === 'all' || item.priority === priorityFilter))
+  const matchesSearch = (item: TaskEntry) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      return true;
+    }
+    return (
+      item.task.toLowerCase().includes(q) ||
+      item.notes.toLowerCase().includes(q) ||
+      (item.tag ?? '').toLowerCase().includes(q)
+    );
+  };
+  const matchesStatus = (item: TaskEntry) =>
+    statusFilter === 'all' ||
+    (statusFilter === 'completed' && item.completed) ||
+    (statusFilter === 'in_progress' && !item.completed);
+  const filteredScheduledEntries = scheduledEntries.filter(
+    (item) =>
+      (priorityFilter === 'all' || item.priority === priorityFilter) &&
+      matchesStatus(item) &&
+      matchesSearch(item) &&
+      !inboxOnly,
+  );
+  const tasksForDay = (inboxOnly ? inboxEntries.filter((x) => matchesSearch(x)) : filteredScheduledEntries)
+    .filter((item) => (inboxOnly ? true : item.date === form.date))
     .sort((a, b) => a.time.localeCompare(b.time));
-  const generalPendingTasks = [...scheduledEntries]
-    .filter(
-      (item) => !item.completed && (priorityFilter === 'all' || item.priority === priorityFilter),
-    )
+  const generalPendingTasks = [...filteredScheduledEntries]
+    .filter((item) => !item.completed)
     .sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
     });
-  const allTasks = [...scheduledEntries]
-    .filter((item) => priorityFilter === 'all' || item.priority === priorityFilter)
+  const allTasks = [...filteredScheduledEntries]
+    .filter((item) => (showArchiveOnly ? item.completed : true))
     .sort((a, b) => {
       const byDate = b.date.localeCompare(a.date);
       return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
@@ -1998,8 +2192,11 @@ export default function App() {
   const getStatusStyle = (completed: boolean) => (completed ? styles.statusDoneChip : styles.statusInProgressChip);
   const getStatusLabel = (completed: boolean) => (completed ? `✓ ${t.completed}` : `• ${t.pending}`);
   const priorityFilterOptions: PriorityFilter[] = ['all', 'low', 'medium', 'high'];
+  const statusFilterOptions: StatusFilter[] = ['all', 'in_progress', 'completed'];
   const getPriorityFilterLabel = (filter: PriorityFilter) =>
     filter === 'all' ? t.priorityAll : getPriorityLabel(filter);
+  const getStatusFilterLabel = (filter: StatusFilter) =>
+    filter === 'all' ? 'All' : filter === 'completed' ? t.completed : t.pending;
 
   const activeBreak = workDay.breaks.find((item) => !item.endedAt);
   const isDayRunning = Boolean(workDay.startedAt) && !workDay.endedAt;
@@ -2155,6 +2352,49 @@ export default function App() {
   );
   const productiveMs = totalTaskTrackedMs;
   const idleMs = Math.max(0, dayStats.netMs - productiveMs);
+  const todayStats = useMemo(() => {
+    const d = today;
+    const items = scheduledEntries.filter((e) => e.date === d);
+    return {
+      tasks: items.length,
+      done: items.filter((e) => e.completed).length,
+      tracked: items.reduce((s, e) => s + getTaskTrackedMs(e, nowTick), 0),
+    };
+  }, [nowTick, scheduledEntries]);
+  const weekStats = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() - 6);
+    const startKey = formatLocalDate(start);
+    const endKey = formatLocalDate(now);
+    const items = scheduledEntries.filter((e) => e.date >= startKey && e.date <= endKey);
+    return {
+      tasks: items.length,
+      done: items.filter((e) => e.completed).length,
+      tracked: items.reduce((s, e) => s + getTaskTrackedMs(e, nowTick), 0),
+    };
+  }, [nowTick, scheduledEntries]);
+  const monthStats = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `${y}-${m}-`;
+    const items = scheduledEntries.filter((e) => e.date.startsWith(prefix));
+    return {
+      tasks: items.length,
+      done: items.filter((e) => e.completed).length,
+      tracked: items.reduce((s, e) => s + getTaskTrackedMs(e, nowTick), 0),
+    };
+  }, [nowTick, scheduledEntries]);
+  const productivityBars = useMemo(
+    () => [
+      { label: 'Today', value: todayStats.tracked },
+      { label: 'Week', value: weekStats.tracked },
+      { label: 'Month', value: monthStats.tracked },
+    ],
+    [monthStats.tracked, todayStats.tracked, weekStats.tracked],
+  );
+  const maxBar = Math.max(1, ...productivityBars.map((b) => b.value));
   const topTasks = useMemo(
     () =>
       [...scheduledEntries]
@@ -2524,6 +2764,12 @@ export default function App() {
           placeholder={t.notesPlaceholder}
           multiline
         />
+        <TextInput
+          style={styles.input}
+          value={form.tag}
+          onChangeText={(text) => updateField('tag', text)}
+          placeholder="Tag (e.g. dev, docs)"
+        />
         <View style={styles.actionsRow}>
           <Pressable style={[styles.primaryButton, styles.actionButton]} onPress={withInteractionFeedback(addTask)}>
             <Text style={styles.buttonText}>{t.addTaskButton}</Text>
@@ -2536,6 +2782,13 @@ export default function App() {
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.priorityFilter}</Text>
+        <TextInput
+          style={styles.input}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search task/comment/tag"
+          placeholderTextColor="#9198aa"
+        />
         <View style={styles.languageButtons}>
           {priorityFilterOptions.map((filter) => (
             <Pressable
@@ -2548,6 +2801,33 @@ export default function App() {
               </Text>
             </Pressable>
           ))}
+        </View>
+        <View style={[styles.languageButtons, { marginTop: 8 }]}>
+          {statusFilterOptions.map((filter) => (
+            <Pressable
+              key={`calendar-status-${filter}`}
+              onPress={withInteractionFeedback(() => setStatusFilter(filter))}
+              style={[styles.languageButton, statusFilter === filter && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, statusFilter === filter && styles.languageButtonTextActive]}>
+                {getStatusFilterLabel(filter)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={[styles.languageButtons, { marginTop: 8 }]}>
+          <Pressable
+            onPress={withInteractionFeedback(() => setShowArchiveOnly((prev) => !prev))}
+            style={[styles.languageButton, showArchiveOnly && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, showArchiveOnly && styles.languageButtonTextActive]}>Archive</Text>
+          </Pressable>
+          <Pressable
+            onPress={withInteractionFeedback(() => setInboxOnly((prev) => !prev))}
+            style={[styles.languageButton, inboxOnly && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, inboxOnly && styles.languageButtonTextActive]}>Inbox only</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -2572,6 +2852,7 @@ export default function App() {
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
               <Text style={styles.entryTask}>{item.task}</Text>
+              {!!item.tag && <Text style={styles.entryNotes}>#{item.tag}</Text>}
               {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
               <View style={styles.taskActionRow}>
@@ -2630,6 +2911,7 @@ export default function App() {
                 <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
               <Text style={styles.entryTask}>{item.task}</Text>
+              {!!item.tag && <Text style={styles.entryNotes}>#{item.tag}</Text>}
               {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
               <View style={styles.taskActionRow}>
                 <Pressable onPress={withInteractionFeedback(() => planInboxTask(item.id))}>
@@ -2683,9 +2965,30 @@ export default function App() {
           <Text style={styles.summaryValue}>{summary.done}</Text>
         </View>
       </View>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryLabel}>Today</Text>
+          <Text style={styles.summaryValue}>{todayStats.done}/{todayStats.tasks}</Text>
+        </View>
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryLabel}>Week</Text>
+          <Text style={styles.summaryValue}>{weekStats.done}/{weekStats.tasks}</Text>
+        </View>
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryLabel}>Month</Text>
+          <Text style={styles.summaryValue}>{monthStats.done}/{monthStats.tasks}</Text>
+        </View>
+      </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.priorityFilter}</Text>
+        <TextInput
+          style={styles.input}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search task/comment/tag"
+          placeholderTextColor="#9198aa"
+        />
         <View style={styles.languageButtons}>
           {priorityFilterOptions.map((filter) => (
             <Pressable
@@ -2699,6 +3002,25 @@ export default function App() {
             </Pressable>
           ))}
         </View>
+        <View style={[styles.languageButtons, { marginTop: 8 }]}>
+          {statusFilterOptions.map((filter) => (
+            <Pressable
+              key={`report-status-${filter}`}
+              onPress={withInteractionFeedback(() => setStatusFilter(filter))}
+              style={[styles.languageButton, statusFilter === filter && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, statusFilter === filter && styles.languageButtonTextActive]}>
+                {getStatusFilterLabel(filter)}
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={withInteractionFeedback(() => setShowArchiveOnly((prev) => !prev))}
+            style={[styles.languageButton, showArchiveOnly && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, showArchiveOnly && styles.languageButtonTextActive]}>Archive</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -2710,7 +3032,23 @@ export default function App() {
           <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportDaySummary)}>
             <Text style={styles.secondaryButtonText}>{t.exportDaySummary}</Text>
           </Pressable>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportPdfReport)}>
+            <Text style={styles.secondaryButtonText}>Export PDF</Text>
+          </Pressable>
         </View>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Productivity</Text>
+        {productivityBars.map((bar) => (
+          <View key={bar.label} style={styles.chartRow}>
+            <Text style={styles.chartLabel}>{bar.label}</Text>
+            <View style={styles.chartTrack}>
+              <View style={[styles.chartFill, { width: `${Math.max(6, (bar.value / maxBar) * 100)}%` }]} />
+            </View>
+            <Text style={styles.chartValue}>{formatDuration(bar.value)}</Text>
+          </View>
+        ))}
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -2749,6 +3087,7 @@ export default function App() {
                 <Text style={styles.priorityBadgeText}>{getStatusLabel(item.completed)}</Text>
               </View>
               <Text style={styles.entryNotes}>{item.task}</Text>
+              {!!item.tag && <Text style={styles.entryNotes}>#{item.tag}</Text>}
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
               {item.completed && (
                 <Pressable onPress={withInteractionFeedback(() => openCompletedCommentEditor(item.id))}>
@@ -2874,6 +3213,42 @@ export default function App() {
         <Pressable style={[styles.secondaryButton, styles.testNotificationButton]} onPress={withInteractionFeedback(sendTestNotification)}>
           <Text style={styles.secondaryButtonText}>{t.testNotification}</Text>
         </Pressable>
+        <Text style={[styles.menuSubtitle, { marginTop: 10 }]}>Reminder lead time</Text>
+        <View style={styles.languageButtons}>
+          {([5, 10, 15] as ReminderLead[]).map((lead) => (
+            <Pressable
+              key={`lead-${lead}`}
+              onPress={withInteractionFeedback(() => setReminderLeadMinutes(lead))}
+              style={[styles.languageButton, reminderLeadMinutes === lead && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, reminderLeadMinutes === lead && styles.languageButtonTextActive]}>
+                {lead}m
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Security</Text>
+        <View style={styles.languageButtons}>
+          <Pressable
+            onPress={withInteractionFeedback(() => setLockEnabled(true))}
+            style={[styles.languageButton, lockEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, lockEnabled && styles.languageButtonTextActive]}>Face ID On</Text>
+          </Pressable>
+          <Pressable
+            onPress={withInteractionFeedback(() => setLockEnabled(false))}
+            style={[styles.languageButton, !lockEnabled && styles.languageButtonActive]}
+          >
+            <Text style={[styles.languageButtonText, !lockEnabled && styles.languageButtonTextActive]}>Off</Text>
+          </Pressable>
+          {lockEnabled && (
+            <Pressable onPress={withInteractionFeedback(() => void unlockWithBiometrics())} style={styles.languageButton}>
+              <Text style={styles.languageButtonText}>Unlock now</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.taskPresets}</Text>
@@ -2984,11 +3359,21 @@ export default function App() {
           translucent
           backgroundColor="transparent"
         />
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          {screen === 'calendar' && renderCalendar()}
-          {screen === 'report' && renderReport()}
-          {screen === 'settings' && renderSettings()}
-        </ScrollView>
+        {!isUnlocked ? (
+          <View style={styles.lockWrap}>
+            <Text style={styles.lockTitle}>DayFlow Locked</Text>
+            <Text style={styles.lockText}>Use Face ID / biometrics to continue.</Text>
+            <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(() => void unlockWithBiometrics())}>
+              <Text style={styles.buttonText}>Unlock</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.scrollContainer}>
+            {screen === 'calendar' && renderCalendar()}
+            {screen === 'report' && renderReport()}
+            {screen === 'settings' && renderSettings()}
+          </ScrollView>
+        )}
         <Modal transparent visible={Boolean(commentTaskId)} animationType="none" onRequestClose={closeCommentModal}>
           <Animated.View style={[styles.modalOverlay, { opacity: commentModalOpacity }]}>
             <Animated.View
@@ -3026,6 +3411,14 @@ export default function App() {
           </Animated.View>
         </Modal>
         {renderTabBar()}
+        {undoSnapshot && isUnlocked && (
+          <View style={styles.undoBar}>
+            <Text style={styles.undoText}>Action applied</Text>
+            <Pressable onPress={withInteractionFeedback(undoLastAction)}>
+              <Text style={styles.undoAction}>Undo</Text>
+            </Pressable>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -3671,6 +4064,78 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
+  },
+  chartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  chartLabel: {
+    width: 48,
+    color: '#5b6378',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  chartTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#e7efff',
+    overflow: 'hidden',
+  },
+  chartFill: {
+    height: '100%',
+    backgroundColor: '#2563eb',
+    borderRadius: 999,
+  },
+  chartValue: {
+    width: 68,
+    textAlign: 'right',
+    color: '#334155',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  lockWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  lockTitle: {
+    color: '#e5ecff',
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  lockText: {
+    color: '#9fb1d8',
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  undoBar: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 76,
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  undoText: {
+    color: '#e5e7eb',
+    fontSize: 13,
+  },
+  undoAction: {
+    color: '#93c5fd',
+    fontWeight: '800',
+    fontSize: 13,
   },
   presetInputRow: {
     flexDirection: 'row',
