@@ -462,6 +462,8 @@ export default function App() {
   const [workDay, setWorkDay] = useState<WorkDayState>({ date: today, breaks: [] });
   const lastDateIndexRef = useRef<number>(-1);
   const lastTimeIndexRef = useRef<number>(-1);
+  const dateWheelRef = useRef<FlatList<string> | null>(null);
+  const timeWheelRef = useRef<FlatList<string> | null>(null);
   const quoteOpacity = useRef(new Animated.Value(1)).current;
   const quoteTranslateY = useRef(new Animated.Value(0)).current;
   const clickSoundRef = useRef<Audio.Sound | null>(null);
@@ -787,7 +789,7 @@ export default function App() {
     lastTimeIndexRef.current = selectedTimeIndex;
   }, [selectedTimeIndex]);
 
-  const handleDateWheelScroll = (offsetY: number) => {
+  const handleDateWheelScroll = (offsetY: number, shouldSnap = false) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
     const bounded = Math.max(0, Math.min(dateOptions.length - 1, index));
     if (bounded !== lastDateIndexRef.current) {
@@ -797,9 +799,15 @@ export default function App() {
         void selectDate(target, true);
       }
     }
+    if (shouldSnap) {
+      const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
+      if (Math.abs(snappedOffset - offsetY) > 1) {
+        dateWheelRef.current?.scrollToOffset({ offset: snappedOffset, animated: true });
+      }
+    }
   };
 
-  const handleTimeWheelScroll = (offsetY: number) => {
+  const handleTimeWheelScroll = (offsetY: number, shouldSnap = false) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
     const bounded = Math.max(0, Math.min(timeOptions.length - 1, index));
     if (bounded !== lastTimeIndexRef.current) {
@@ -807,6 +815,12 @@ export default function App() {
       const target = timeOptions[bounded];
       if (target) {
         void selectTime(target, true);
+      }
+    }
+    if (shouldSnap) {
+      const snappedOffset = bounded * WHEEL_ITEM_HEIGHT;
+      if (Math.abs(snappedOffset - offsetY) > 1) {
+        timeWheelRef.current?.scrollToOffset({ offset: snappedOffset, animated: true });
       }
     }
   };
@@ -1307,6 +1321,7 @@ export default function App() {
         <View style={styles.pickerRow}>
           <View style={[styles.dateWheelContainer, styles.halfWheel]}>
             <FlatList
+              ref={dateWheelRef}
               data={dateOptions}
               keyExtractor={(item) => item}
               initialScrollIndex={selectedDateIndex}
@@ -1317,7 +1332,8 @@ export default function App() {
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
               onScroll={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
-              onMomentumScrollEnd={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y, true)}
+              onScrollEndDrag={(event) => handleDateWheelScroll(event.nativeEvent.contentOffset.y, true)}
               renderItem={({ item }) => {
                 const selected = item === form.date;
                 return (
@@ -1340,6 +1356,7 @@ export default function App() {
           </View>
           <View style={[styles.timeWheelContainer, styles.halfWheel]}>
             <FlatList
+              ref={timeWheelRef}
               data={timeOptions}
               keyExtractor={(item) => item}
               initialScrollIndex={selectedTimeIndex}
@@ -1350,7 +1367,8 @@ export default function App() {
               contentContainerStyle={styles.wheelContent}
               scrollEventThrottle={16}
               onScroll={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
-              onMomentumScrollEnd={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y)}
+              onMomentumScrollEnd={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true)}
+              onScrollEndDrag={(event) => handleTimeWheelScroll(event.nativeEvent.contentOffset.y, true)}
               renderItem={({ item }) => {
                 const selected = item === form.time;
                 return (
