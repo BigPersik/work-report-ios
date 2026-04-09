@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
@@ -28,6 +29,8 @@ type TaskEntry = {
   time: string;
   task: string;
   notes: string;
+  priority: Priority;
+  inbox?: boolean;
   completed: boolean;
   createdAt: string;
   trackedMs: number;
@@ -39,7 +42,9 @@ type NewTask = {
   time: string;
   task: string;
   notes: string;
+  priority: Priority;
 };
+type Priority = 'low' | 'medium' | 'high';
 
 type Language = 'uk' | 'en' | 'ro';
 type Screen = 'calendar' | 'report' | 'settings';
@@ -98,6 +103,17 @@ const translations: Record<
     appMode: string;
     testNotification: string;
     testNotificationBody: string;
+    priority: string;
+    priorityLow: string;
+    priorityMedium: string;
+    priorityHigh: string;
+    addToInbox: string;
+    inboxTitle: string;
+    noInbox: string;
+    planFromInbox: string;
+    exportDaySummary: string;
+    exportJson: string;
+    importJson: string;
     on: string;
     off: string;
     themeLight: string;
@@ -177,6 +193,17 @@ const translations: Record<
     appMode: 'Режим',
     testNotification: 'Тест сповіщення',
     testNotificationBody: 'Перевірка сповіщення DayFlow',
+    priority: 'Пріоритет',
+    priorityLow: 'Низький',
+    priorityMedium: 'Середній',
+    priorityHigh: 'Високий',
+    addToInbox: 'В inbox',
+    inboxTitle: 'Inbox',
+    noInbox: 'Inbox порожній.',
+    planFromInbox: 'Запланувати',
+    exportDaySummary: 'Експорт підсумку дня',
+    exportJson: 'Експорт JSON',
+    importJson: 'Імпорт JSON',
     on: 'Увімк.',
     off: 'Вимк.',
     themeLight: 'Світла',
@@ -236,7 +263,7 @@ const translations: Record<
     done: 'Готово',
     fileSaved: 'Файл збережено',
     exportError: 'Не вдалося зробити експорт.',
-    csvHeader: 'Дата,Час,Задача,Коментар,Статус,Час задачі',
+    csvHeader: 'Дата,Час,Задача,Пріоритет,Коментар,Статус,Час задачі',
   },
   en: {
     title: 'DayFlow',
@@ -255,6 +282,17 @@ const translations: Record<
     appMode: 'Mode',
     testNotification: 'Test notification',
     testNotificationBody: 'DayFlow notification test',
+    priority: 'Priority',
+    priorityLow: 'Low',
+    priorityMedium: 'Medium',
+    priorityHigh: 'High',
+    addToInbox: 'To inbox',
+    inboxTitle: 'Inbox',
+    noInbox: 'Inbox is empty.',
+    planFromInbox: 'Schedule',
+    exportDaySummary: 'Export day summary',
+    exportJson: 'Export JSON',
+    importJson: 'Import JSON',
     on: 'On',
     off: 'Off',
     themeLight: 'Light',
@@ -314,7 +352,7 @@ const translations: Record<
     done: 'Done',
     fileSaved: 'File saved',
     exportError: 'Failed to export.',
-    csvHeader: 'Date,Time,Task,Notes,Status,Task Time',
+    csvHeader: 'Date,Time,Task,Priority,Notes,Status,Task Time',
   },
   ro: {
     title: 'DayFlow',
@@ -333,6 +371,17 @@ const translations: Record<
     appMode: 'Mod',
     testNotification: 'Test notificare',
     testNotificationBody: 'Test notificare DayFlow',
+    priority: 'Prioritate',
+    priorityLow: 'Scazut',
+    priorityMedium: 'Mediu',
+    priorityHigh: 'Ridicat',
+    addToInbox: 'In inbox',
+    inboxTitle: 'Inbox',
+    noInbox: 'Inbox este gol.',
+    planFromInbox: 'Planifica',
+    exportDaySummary: 'Export rezumat zi',
+    exportJson: 'Export JSON',
+    importJson: 'Import JSON',
     on: 'Pornit',
     off: 'Oprit',
     themeLight: 'Luminoasă',
@@ -392,7 +441,7 @@ const translations: Record<
     done: 'Gata',
     fileSaved: 'Fișier salvat',
     exportError: 'Exportul a eșuat.',
-    csvHeader: 'Data,Ora,Sarcină,Comentariu,Status,Timp sarcină',
+    csvHeader: 'Data,Ora,Sarcină,Prioritate,Comentariu,Status,Timp sarcină',
   },
 };
 
@@ -401,6 +450,7 @@ const INITIAL_FORM: NewTask = {
   time: '08:30',
   task: '',
   notes: '',
+  priority: 'medium',
 };
 
 const parseDateTime = (entry: Pick<TaskEntry, 'date' | 'time'>) => new Date(`${entry.date}T${entry.time}:00`);
@@ -815,6 +865,11 @@ export default function App() {
             time: item.time ?? '09:00',
             task: item.task ?? '',
             notes: item.notes ?? '',
+            priority:
+              item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
+                ? item.priority
+                : 'medium',
+            inbox: Boolean(item.inbox),
             completed: item.completed ?? false,
             createdAt: item.createdAt ?? new Date().toISOString(),
             trackedMs: typeof item.trackedMs === 'number' ? item.trackedMs : 0,
@@ -880,19 +935,36 @@ export default function App() {
     return { total, done, pending: total - done };
   }, [entries]);
 
+  const scheduledEntries = useMemo(() => entries.filter((item) => !item.inbox), [entries]);
+  const inboxEntries = useMemo(
+    () =>
+      entries
+        .filter((item) => item.inbox && !item.completed)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [entries],
+  );
+  const taskTemplates = useMemo<Record<Language, string[]>>(
+    () => ({
+      uk: ['Щоденний звіт', 'Code review', 'Мітинг з командою', 'Виправити баг', 'Планування задач'],
+      en: ['Daily report', 'Code review', 'Team meeting', 'Fix bug', 'Task planning'],
+      ro: ['Raport zilnic', 'Code review', 'Sedinta cu echipa', 'Rezolva bug', 'Planificare task-uri'],
+    }),
+    [],
+  );
+
 
   const currentTask = useMemo(() => {
     const now = new Date(nowTick);
-    return entries
+    return scheduledEntries
       .filter((item) => !item.completed && parseDateTime(item) <= now)
       .sort((a, b) => parseDateTime(a).getTime() - parseDateTime(b).getTime())[0];
-  }, [entries, nowTick]);
+  }, [nowTick, scheduledEntries]);
   const nextTask = useMemo(() => {
     const now = new Date(nowTick);
-    return entries
+    return scheduledEntries
       .filter((item) => !item.completed && parseDateTime(item) > now)
       .sort((a, b) => parseDateTime(a).getTime() - parseDateTime(b).getTime())[0];
-  }, [entries, nowTick]);
+  }, [nowTick, scheduledEntries]);
 
   const monthCells = useMemo(() => {
     const base = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth(), 1);
@@ -1155,6 +1227,8 @@ export default function App() {
       time: form.time,
       task: form.task.trim(),
       notes: form.notes.trim(),
+      priority: form.priority,
+      inbox: false,
       completed: false,
       createdAt: new Date().toISOString(),
       trackedMs: 0,
@@ -1163,6 +1237,43 @@ export default function App() {
     setEntries((prev) => [entry, ...prev]);
     setForm((prev) => ({ ...INITIAL_FORM, date: prev.date, time: prev.time }));
     void scheduleTaskReminders(entry);
+  };
+
+  const addToInbox = () => {
+    if (!form.task.trim()) {
+      Alert.alert(t.validationTitle, t.validationMessage);
+      return;
+    }
+    const entry: TaskEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: today,
+      time: '08:30',
+      task: form.task.trim(),
+      notes: form.notes.trim(),
+      priority: form.priority,
+      inbox: true,
+      completed: false,
+      createdAt: new Date().toISOString(),
+      trackedMs: 0,
+      trackingStartedAt: undefined,
+    };
+    setEntries((prev) => [entry, ...prev]);
+    setForm((prev) => ({ ...INITIAL_FORM, date: prev.date, time: prev.time }));
+  };
+
+  const planInboxTask = (id: string) => {
+    setEntries((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              inbox: false,
+              date: form.date,
+              time: form.time,
+            }
+          : item,
+      ),
+    );
   };
 
   useEffect(() => {
@@ -1434,11 +1545,11 @@ export default function App() {
   };
 
   const exportCsv = async () => {
-    if (entries.length === 0) {
+    if (scheduledEntries.length === 0) {
       Alert.alert(t.noDataTitle, t.noDataMessage);
       return;
     }
-    const sorted = [...entries].sort((a, b) => {
+    const sorted = [...scheduledEntries].sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
     });
@@ -1447,6 +1558,7 @@ export default function App() {
         item.date,
         item.time,
         item.task,
+        getPriorityLabel(item.priority),
         item.notes,
         item.completed ? t.completed : t.pending,
         formatDuration(getTaskTrackedMs(item, nowTick)),
@@ -1482,20 +1594,154 @@ export default function App() {
     }
   };
 
-  const tasksForDay = entries
+  const exportDaySummary = async () => {
+    const dayItems = scheduledEntries
+      .filter((item) => item.date === form.date)
+      .sort((a, b) => a.time.localeCompare(b.time));
+    const lines = [
+      `DayFlow ${t.menuReport}`,
+      `${t.selectDay}: ${form.date}`,
+      `${t.totalTasks}: ${dayItems.length}`,
+      `${t.doneTasks}: ${dayItems.filter((i) => i.completed).length}`,
+      `${t.pendingTasks}: ${dayItems.filter((i) => !i.completed).length}`,
+      `${t.workTime}: ${formatDuration(dayStats.workMs)}`,
+      `${t.breakTime}: ${formatDuration(dayStats.breakMs)}`,
+      `${t.netTime}: ${formatDuration(dayStats.netMs)}`,
+      '',
+      `${t.tasksForDay}:`,
+      ...dayItems.map((item) => {
+        const pr = item.priority === 'high' ? t.priorityHigh : item.priority === 'low' ? t.priorityLow : t.priorityMedium;
+        return `- ${item.time} | ${item.task} | ${pr} | ${item.completed ? t.completed : t.pending}`;
+      }),
+    ];
+    const content = lines.join('\n');
+    const fileUri = `${FileSystem.cacheDirectory}dayflow-summary-${form.date}.txt`;
+    try {
+      await FileSystem.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Alert.alert(t.done, `${t.fileSaved}: ${fileUri}`);
+        return;
+      }
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/plain' });
+    } catch {
+      Alert.alert(t.error, t.exportError);
+    }
+  };
+
+  const exportJsonBackup = async () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      entries,
+      workDay,
+      language,
+      themeMode,
+      soundEnabled,
+      hapticsEnabled,
+      notificationsEnabled,
+    };
+    const fileUri = `${FileSystem.cacheDirectory}dayflow-backup-${Date.now()}.json`;
+    try {
+      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(payload, null, 2), {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Alert.alert(t.done, `${t.fileSaved}: ${fileUri}`);
+        return;
+      }
+      await Sharing.shareAsync(fileUri, { mimeType: 'application/json' });
+    } catch {
+      Alert.alert(t.error, t.exportError);
+    }
+  };
+
+  const importJsonBackup = async () => {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets?.[0]?.uri) {
+        return;
+      }
+      const content = await FileSystem.readAsStringAsync(picked.assets[0].uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const parsed = JSON.parse(content) as {
+        entries?: TaskEntry[];
+        workDay?: WorkDayState;
+        language?: Language;
+        themeMode?: ThemeMode;
+        soundEnabled?: boolean;
+        hapticsEnabled?: boolean;
+        notificationsEnabled?: boolean;
+      };
+      if (Array.isArray(parsed.entries)) {
+        setEntries(
+          parsed.entries.map((item) => ({
+            ...item,
+            priority:
+              item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
+                ? item.priority
+                : 'medium',
+            inbox: Boolean(item.inbox),
+          })),
+        );
+      }
+      if (parsed.workDay) {
+        setWorkDay({
+          date: parsed.workDay.date ?? formatLocalDate(new Date()),
+          startedAt: parsed.workDay.startedAt,
+          endedAt: parsed.workDay.endedAt,
+          breaks: Array.isArray(parsed.workDay.breaks) ? parsed.workDay.breaks : [],
+          accumulatedWorkMs:
+            typeof parsed.workDay.accumulatedWorkMs === 'number' ? parsed.workDay.accumulatedWorkMs : 0,
+        });
+      }
+      if (parsed.language === 'uk' || parsed.language === 'en' || parsed.language === 'ro') {
+        setLanguage(parsed.language);
+      }
+      if (parsed.themeMode === 'light' || parsed.themeMode === 'dark' || parsed.themeMode === 'colorful') {
+        setThemeMode(parsed.themeMode);
+      }
+      if (typeof parsed.soundEnabled === 'boolean') {
+        setSoundEnabled(parsed.soundEnabled);
+      }
+      if (typeof parsed.hapticsEnabled === 'boolean') {
+        setHapticsEnabled(parsed.hapticsEnabled);
+      }
+      if (typeof parsed.notificationsEnabled === 'boolean') {
+        setNotificationsEnabled(parsed.notificationsEnabled);
+      }
+      Alert.alert(t.done, t.fileSaved);
+    } catch {
+      Alert.alert(t.error, t.loadError);
+    }
+  };
+
+  const tasksForDay = scheduledEntries
     .filter((item) => item.date === form.date)
     .sort((a, b) => a.time.localeCompare(b.time));
-  const generalPendingTasks = [...entries]
+  const generalPendingTasks = [...scheduledEntries]
     .filter((item) => !item.completed)
     .sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       return byDate !== 0 ? byDate : a.time.localeCompare(b.time);
     });
-  const allTasks = [...entries].sort((a, b) => {
+  const allTasks = [...scheduledEntries].sort((a, b) => {
     const byDate = b.date.localeCompare(a.date);
     return byDate !== 0 ? byDate : b.time.localeCompare(a.time);
   });
-  const hasTasksOnDay = (date: string) => entries.some((item) => item.date === date);
+  const hasTasksOnDay = (date: string) => scheduledEntries.some((item) => item.date === date);
+  const getPriorityLabel = (priority: Priority) =>
+    priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityMedium;
+  const getPriorityStyle = (priority: Priority) =>
+    priority === 'high'
+      ? styles.priorityHigh
+      : priority === 'low'
+        ? styles.priorityLow
+        : styles.priorityMedium;
 
   const activeBreak = workDay.breaks.find((item) => !item.endedAt);
   const isDayRunning = Boolean(workDay.startedAt) && !workDay.endedAt;
@@ -1646,17 +1892,17 @@ export default function App() {
   }, [nowTick, workDay]);
 
   const totalTaskTrackedMs = useMemo(
-    () => entries.reduce((sum, item) => sum + getTaskTrackedMs(item, nowTick), 0),
-    [entries, nowTick],
+    () => scheduledEntries.reduce((sum, item) => sum + getTaskTrackedMs(item, nowTick), 0),
+    [nowTick, scheduledEntries],
   );
   const productiveMs = totalTaskTrackedMs;
   const idleMs = Math.max(0, dayStats.netMs - productiveMs);
   const topTasks = useMemo(
     () =>
-      [...entries]
+      [...scheduledEntries]
         .sort((a, b) => getTaskTrackedMs(b, nowTick) - getTaskTrackedMs(a, nowTick))
         .slice(0, 3),
-    [entries, nowTick],
+    [nowTick, scheduledEntries],
   );
   const activelyTrackedTask = useMemo(
     () => entries.find((item) => Boolean(item.trackingStartedAt) && !item.completed),
@@ -1982,6 +2228,31 @@ export default function App() {
             </View>
           </View>
         )}
+        <Text style={[styles.menuSubtitle, { marginBottom: 6 }]}>{t.priority}</Text>
+        <View style={styles.languageButtons}>
+          {(['low', 'medium', 'high'] as Priority[]).map((priority) => (
+            <Pressable
+              key={priority}
+              onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, priority })))}
+              style={[styles.languageButton, form.priority === priority && styles.languageButtonActive]}
+            >
+              <Text style={[styles.languageButtonText, form.priority === priority && styles.languageButtonTextActive]}>
+                {getPriorityLabel(priority)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.templatesRow}>
+          {taskTemplates[language].map((template) => (
+            <Pressable
+              key={template}
+              style={styles.templateChip}
+              onPress={withInteractionFeedback(() => setForm((prev) => ({ ...prev, task: template })))}
+            >
+              <Text style={styles.templateChipText}>{template}</Text>
+            </Pressable>
+          ))}
+        </View>
         <TextInput
           style={styles.input}
           value={form.task}
@@ -1995,9 +2266,14 @@ export default function App() {
           placeholder={t.notesPlaceholder}
           multiline
         />
-        <Pressable style={styles.primaryButton} onPress={withInteractionFeedback(addTask)}>
-          <Text style={styles.buttonText}>{t.addTaskButton}</Text>
-        </Pressable>
+        <View style={styles.actionsRow}>
+          <Pressable style={[styles.primaryButton, styles.actionButton]} onPress={withInteractionFeedback(addTask)}>
+            <Text style={styles.buttonText}>{t.addTaskButton}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(addToInbox)}>
+            <Text style={styles.secondaryButtonText}>{t.addToInbox}</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -2016,6 +2292,9 @@ export default function App() {
                 <Text style={[styles.entryHours, item.completed && styles.completedText]}>
                   {item.completed ? t.completed : t.pending}
                 </Text>
+              </View>
+              <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
+                <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
               </View>
               <Text style={styles.entryTask}>{item.task}</Text>
               {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
@@ -2057,6 +2336,32 @@ export default function App() {
             )}
           />
         )}
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.inboxTitle}</Text>
+        <FlatList
+          data={inboxEntries}
+          keyExtractor={(item) => `inbox-${item.id}`}
+          scrollEnabled={false}
+          ListEmptyComponent={<Text style={styles.emptyText}>{t.noInbox}</Text>}
+          renderItem={({ item }) => (
+            <View style={styles.entryCard}>
+              <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
+                <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+              </View>
+              <Text style={styles.entryTask}>{item.task}</Text>
+              {!!item.notes && <Text style={styles.entryNotes}>{item.notes}</Text>}
+              <View style={styles.taskActionRow}>
+                <Pressable onPress={withInteractionFeedback(() => planInboxTask(item.id))}>
+                  <Text style={styles.markDoneText}>{t.planFromInbox}</Text>
+                </Pressable>
+                <Pressable onPress={withInteractionFeedback(() => removeTask(item.id))}>
+                  <Text style={styles.deleteText}>{t.delete}</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+        />
       </View>
     </>
   );
@@ -2101,9 +2406,14 @@ export default function App() {
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.menuReport}</Text>
-        <Pressable style={styles.secondaryButton} onPress={withInteractionFeedback(exportCsv)}>
-          <Text style={styles.secondaryButtonText}>{t.exportCsv}</Text>
-        </Pressable>
+        <View style={styles.actionsRow}>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportCsv)}>
+            <Text style={styles.secondaryButtonText}>{t.exportCsv}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportDaySummary)}>
+            <Text style={styles.secondaryButtonText}>{t.exportDaySummary}</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
@@ -2135,6 +2445,9 @@ export default function App() {
           renderItem={({ item }) => (
             <View style={styles.entryCard}>
               <Text style={styles.entryTask}>{item.date} {item.time}</Text>
+              <View style={[styles.priorityBadge, getPriorityStyle(item.priority)]}>
+                <Text style={styles.priorityBadgeText}>{getPriorityLabel(item.priority)}</Text>
+              </View>
               <Text style={styles.entryNotes}>{item.task} ({item.completed ? t.completed : t.pending})</Text>
               <Text style={styles.entryNotes}>{t.taskTime}: {formatDuration(getTaskTrackedMs(item, nowTick))}</Text>
             </View>
@@ -2256,6 +2569,17 @@ export default function App() {
         <Pressable style={[styles.secondaryButton, styles.testNotificationButton]} onPress={withInteractionFeedback(sendTestNotification)}>
           <Text style={styles.secondaryButtonText}>{t.testNotification}</Text>
         </Pressable>
+      </View>
+      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Backup</Text>
+        <View style={styles.actionsRow}>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportJsonBackup)}>
+            <Text style={styles.secondaryButtonText}>{t.exportJson}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(importJsonBackup)}>
+            <Text style={styles.secondaryButtonText}>{t.importJson}</Text>
+          </Pressable>
+        </View>
       </View>
     </>
   );
@@ -2582,6 +2906,50 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 8,
     marginBottom: 8,
+  },
+  actionButton: {
+    flex: 1,
+  },
+  templatesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  templateChip: {
+    borderWidth: 1,
+    borderColor: '#c7dafd',
+    borderRadius: 999,
+    backgroundColor: '#ecf2ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  templateChipText: {
+    color: '#1e40af',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  priorityBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginTop: 6,
+  },
+  priorityBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  priorityLow: {
+    backgroundColor: '#16A34A',
+  },
+  priorityMedium: {
+    backgroundColor: '#D97706',
+  },
+  priorityHigh: {
+    backgroundColor: '#DC2626',
   },
   dayControlRow: {
     flexDirection: 'row',
