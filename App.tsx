@@ -418,6 +418,7 @@ export default function App() {
   const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date(today));
   const [showGeneralTasks, setShowGeneralTasks] = useState(false);
   const [nowTick, setNowTick] = useState<number>(Date.now());
+  const [quoteIndex, setQuoteIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const t = translations[language];
   const isDark = themeMode === 'dark';
@@ -442,6 +443,62 @@ export default function App() {
     const timer = setInterval(() => setNowTick(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
+
+  const motivationalQuotes = useMemo(() => {
+    if (language === 'uk') {
+      return [
+        'Почни з малого. Геніальність підключиться в процесі.',
+        'План простий: робимо. Ниття після релізу.',
+        'Твій дедлайн нервує більше, ніж ти. І це добре.',
+        'Ще один таск — і ти офіційно машина.',
+        'Якщо складно, зроби перший крок. Драма скасується.',
+        'Список задач великий? Приємно. Є де бути героєм.',
+        'Не відкладай на завтра те, що вже дивиться на тебе сьогодні.',
+        'Фокус на максимум: телефон мовчить, вкладки плачуть.',
+        'Ти не прокрастинуєш. Ти просто “розганяєшся”.',
+        'Кава випита — значить продуктивність юридично активна.',
+        'Тут або ти закриєш задачу, або задача закриє тебе. Обирай.',
+        'Повільно — це теж швидко, якщо без істерики.',
+      ];
+    }
+    if (language === 'ro') {
+      return [
+        'Incepe mic. Momentum-ul vine dupa.',
+        'Planul zilei: faci treaba, apoi faci pe filozoful.',
+        'Deadline-ul e stresat. Tu ramai calm.',
+        'Inca un task si pari deja periculos de eficient.',
+        'Daca e greu, fa primul pas. Restul vine.',
+        'Lista e lunga? Perfect. Ai unde straluci.',
+        'Nu amana pe maine ce te priveste urat azi.',
+        'Focus maxim: notificari mute, rezultate tari.',
+        'Nu procrastinezi. Doar “pregatesti terenul”.',
+        'Cafeaua e gata. Productivitatea are unda verde.',
+        'Ori inchizi taskul, ori te inchide el pe tine.',
+        'Incet e ok, daca mergi constant.',
+      ];
+    }
+    return [
+      'Start small. Look unstoppable later.',
+      'One task now beats ten excuses later.',
+      'Deadline is loud? Be louder with results.',
+      'Another task down. Main character energy unlocked.',
+      'If it feels messy, do the first clear step.',
+      'Your to-do list is long. Your excuses should be short.',
+      'Close random tabs. Open actual progress.',
+      'You call it pressure. I call it plot development.',
+      'Not procrastinating, just... cinematic buildup.',
+      'Coffee loaded. Productivity legally binding.',
+      'Either you finish the task, or it haunts your evening.',
+      'Slow is fine. Stuck is not.',
+    ];
+  }, [language]);
+
+  useEffect(() => {
+    const quoteTimer = setInterval(() => {
+      setQuoteIndex((prev) => (prev + 1) % motivationalQuotes.length);
+    }, 9000);
+    return () => clearInterval(quoteTimer);
+  }, [motivationalQuotes.length]);
 
   useEffect(() => {
     const load = async () => {
@@ -982,8 +1039,9 @@ export default function App() {
 
   const renderCalendar = () => (
     <>
-      <Text style={[styles.title, { color: c.textPrimary }]}>{t.calendarTitle}</Text>
-      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{t.subtitle}</Text>
+      <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.quoteText, { color: c.textPrimary }]}>{motivationalQuotes[quoteIndex]}</Text>
+      </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <View style={styles.workdayHeaderRow}>
@@ -1268,8 +1326,9 @@ export default function App() {
 
   const renderReport = () => (
     <>
-      <Text style={[styles.title, { color: c.textPrimary }]}>{t.menuReport}</Text>
-      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{t.subtitle}</Text>
+      <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.quoteText, { color: c.textPrimary }]}>{motivationalQuotes[quoteIndex]}</Text>
+      </View>
 
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.workDay}</Text>
@@ -1343,8 +1402,9 @@ export default function App() {
 
   const renderSettings = () => (
     <>
-      <Text style={[styles.title, { color: c.textPrimary }]}>{t.menuSettings}</Text>
-      <Text style={[styles.subtitle, { color: c.textSecondary }]}>{t.subtitle}</Text>
+      <View style={[styles.quoteCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.quoteText, { color: c.textPrimary }]}>{motivationalQuotes[quoteIndex]}</Text>
+      </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.language}</Text>
         <View style={styles.languageButtons}>
@@ -1433,7 +1493,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 104,
+    paddingBottom: 92,
   },
   title: {
     fontSize: 28,
@@ -1445,6 +1505,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: '#606781',
     fontSize: 14,
+  },
+  quoteCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  quoteText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   menuContainer: {
     paddingTop: 12,
@@ -1862,23 +1934,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
   },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#dbe3f7',
-    borderRadius: 18,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    gap: 8,
+    borderRadius: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    gap: 6,
     shadowColor: '#1a2b55',
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: -1 },
+    elevation: 3,
   },
   tabItem: {
     flex: 1,
