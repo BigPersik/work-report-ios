@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
@@ -10,12 +9,11 @@ import * as Notifications from 'expo-notifications';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as Calendar from 'expo-calendar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { addCalendarDays, dateInReportScope, parseRepeatRule, type RepeatRule, type ReportScope } from './lib/dayflow-utils';
 import {
   Animated,
   Alert,
-  FlatList,
   KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
@@ -240,6 +238,11 @@ const translations: Record<
     startNow: string;
     taskTime: string;
     exportCsv: string;
+    exportSectionTitle: string;
+    exportSectionHint: string;
+    exportTileCsvDesc: string;
+    exportTileSummaryDesc: string;
+    exportTilePdfDesc: string;
     generalTasks: string;
     noGeneralTasks: string;
     tasksForDay: string;
@@ -303,6 +306,10 @@ const translations: Record<
     tabReportHint: string;
     tabSettingsHint: string;
     autoBackupHint: string;
+    backupActionsHint: string;
+    backupTileExportDesc: string;
+    backupTileImportDesc: string;
+    backupTileRevertDesc: string;
     taskRepeatBadgeDaily: string;
     taskRepeatBadgeWeekly: string;
     topTaskShareSuffix: string;
@@ -408,6 +415,11 @@ const translations: Record<
     startNow: 'Взяти в роботу зараз',
     taskTime: 'Час завдання',
     exportCsv: 'Експорт CSV',
+    exportSectionTitle: 'Експорт даних',
+    exportSectionHint: 'Файли враховують обраний період і фільтри звіту вище.',
+    exportTileCsvDesc: 'Таблиця · Excel, Google Sheets',
+    exportTileSummaryDesc: 'Текстовий підсумок робочого дня',
+    exportTilePdfDesc: 'Зручно для друку та надсилання',
     generalTasks: 'Загальні завдання',
     noGeneralTasks: 'Немає запланованих незавершених завдань.',
     tasksForDay: 'Завдання за день',
@@ -471,6 +483,10 @@ const translations: Record<
     tabReportHint: 'Звіт і експорт',
     tabSettingsHint: 'Мова, резервні копії, безпека',
     autoBackupHint: 'Копія dayflow-autobackup.json у папці застосунку; через «Поділитися» можна зберегти в iCloud у Файлах.',
+    backupActionsHint: 'Повний знімок задач і налаштувань в одному JSON-файлі.',
+    backupTileExportDesc: 'Зберегти та надіслати через «Поділитися»',
+    backupTileImportDesc: 'Відновити дані з файлу резервної копії',
+    backupTileRevertDesc: 'Повернути стан до останнього імпорту',
     taskRepeatBadgeDaily: 'щодня',
     taskRepeatBadgeWeekly: 'щотижня',
     topTaskShareSuffix: '% від чистого часу дня',
@@ -575,6 +591,11 @@ const translations: Record<
     startNow: 'Start now',
     taskTime: 'Task time',
     exportCsv: 'Export CSV',
+    exportSectionTitle: 'Export',
+    exportSectionHint: 'Files use the report period and filters above.',
+    exportTileCsvDesc: 'Spreadsheet · Excel, Sheets',
+    exportTileSummaryDesc: 'Plain-text workday summary',
+    exportTilePdfDesc: 'Print-friendly layout',
     generalTasks: 'General tasks',
     noGeneralTasks: 'No unfinished scheduled tasks.',
     tasksForDay: 'Tasks for the day',
@@ -638,6 +659,10 @@ const translations: Record<
     tabReportHint: 'Reports and export',
     tabSettingsHint: 'Language, backup, security',
     autoBackupHint: 'Latest snapshot is also saved as dayflow-autobackup.json in the app folder; share to Files / iCloud if you like.',
+    backupActionsHint: 'Full snapshot of tasks and settings in one JSON file.',
+    backupTileExportDesc: 'Save and share via the system share sheet',
+    backupTileImportDesc: 'Restore from a backup file on this device',
+    backupTileRevertDesc: 'Undo the last import and restore the previous state',
     taskRepeatBadgeDaily: 'daily',
     taskRepeatBadgeWeekly: 'weekly',
     topTaskShareSuffix: '% of net day time',
@@ -742,6 +767,11 @@ const translations: Record<
     startNow: 'Începe acum',
     taskTime: 'Timp sarcină',
     exportCsv: 'Exportă CSV',
+    exportSectionTitle: 'Export de date',
+    exportSectionHint: 'Fișierele folosesc perioada și filtrele de mai sus.',
+    exportTileCsvDesc: 'Tabel · Excel, Sheets',
+    exportTileSummaryDesc: 'Rezumat text al zilei de lucru',
+    exportTilePdfDesc: 'Potrivit pentru tipărire și partajare',
     generalTasks: 'Sarcini generale',
     noGeneralTasks: 'Nu există sarcini planificate nefinalizate.',
     tasksForDay: 'Sarcini pe zi',
@@ -805,6 +835,10 @@ const translations: Record<
     tabReportHint: 'Raport și export',
     tabSettingsHint: 'Limbă, backup, securitate',
     autoBackupHint: 'Copie dayflow-autobackup.json în folderul aplicației; partajare către Fișiere / iCloud.',
+    backupActionsHint: 'Instantaneu complet: sarcini și setări într-un singur fișier JSON.',
+    backupTileExportDesc: 'Salvare și partajare din aplicație',
+    backupTileImportDesc: 'Restaurare din fișier de backup',
+    backupTileRevertDesc: 'Revino la starea de dinaintea ultimului import',
     taskRepeatBadgeDaily: 'zilnic',
     taskRepeatBadgeWeekly: 'săptămânal',
     topTaskShareSuffix: '% din timpul net al zilei',
@@ -826,13 +860,54 @@ const getTaskTrackedMs = (entry: TaskEntry, nowMs: number) => {
   const live = entry.trackingStartedAt ? Math.max(0, nowMs - new Date(entry.trackingStartedAt).getTime()) : 0;
   return Math.max(0, entry.trackedMs + live);
 };
-const WHEEL_ITEM_HEIGHT = 32;
-const WHEEL_VISIBLE_ROWS = 5;
+
+/** MyMemory sometimes returns percent-encoded (or double-encoded) UTF-8; normalize for display and storage. */
+function decodePercentEncodedText(raw: string): string {
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return raw;
+  }
+  let cur = raw.replace(/\+/g, ' ');
+  if (!/%[0-9A-Fa-f]{2}/.test(cur)) {
+    return raw;
+  }
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      const next = decodeURIComponent(cur);
+      if (next === cur) {
+        break;
+      }
+      cur = next;
+      if (!/%[0-9A-Fa-f]{2}/.test(cur)) {
+        break;
+      }
+    } catch {
+      break;
+    }
+  }
+  return cur;
+}
+
+function decodeEntryI18n(rec?: Partial<Record<Language, string>>): Partial<Record<Language, string>> | undefined {
+  if (!rec) {
+    return undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(rec).map(([k, v]) => [k, typeof v === 'string' ? decodePercentEncodedText(v) : v]),
+  ) as Partial<Record<Language, string>>;
+}
+
+function decodePresetList(arr: string[] | undefined, fallback: string[]): string[] {
+  return Array.isArray(arr)
+    ? arr
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        .map((x) => decodePercentEncodedText(x.trim()))
+    : fallback;
+}
+
+const WHEEL_ITEM_HEIGHT = 26;
+const WHEEL_VISIBLE_ROWS = 4;
 const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ROWS;
 const WHEEL_CENTER_OFFSET = (WHEEL_CONTAINER_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
-/** iOS UIDatePicker spinner needs full width for hour + minute columns; min height avoids clipping. */
-const NATIVE_IOS_PICKER_HEIGHT = 216;
-const USE_NATIVE_IOS_PICKER = true;
 const CLICK_SOUND_URI =
   'data:audio/wav;base64,UklGRjwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YRgAAAAAABkAMgBKAGAAdABmAE8AOQAjAAwAAAAA8f/k/9f/yv/N/9f/6f8AAP//';
 
@@ -938,8 +1013,8 @@ export default function App() {
   const lastTimeIndexRef = useRef<number>(-1);
   const lastDateHapticIndexRef = useRef<number>(-1);
   const lastTimeHapticIndexRef = useRef<number>(-1);
-  const dateWheelRef = useRef<FlatList<string> | null>(null);
-  const timeWheelRef = useRef<FlatList<string> | null>(null);
+  const dateWheelRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
+  const timeWheelRef = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const lastDateOffsetRef = useRef(0);
   const lastTimeOffsetRef = useRef(0);
   const dateMagnetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -962,13 +1037,16 @@ export default function App() {
   };
   const translateText = async (text: string, from: Language, to: Language) => {
     const clean = text.trim();
-    if (!clean || from === to) {
+    if (!clean) {
       return text;
+    }
+    if (from === to) {
+      return decodePercentEncodedText(text);
     }
     const key = `${from}:${to}:${clean}`;
     const cached = translationCacheRef.current.get(key);
     if (cached) {
-      return cached;
+      return decodePercentEncodedText(cached);
     }
     const langMap: Record<Language, string> = { uk: 'uk', en: 'en', ro: 'ro' };
     try {
@@ -982,15 +1060,16 @@ export default function App() {
       if (!translated) {
         return text;
       }
-      translationCacheRef.current.set(key, translated);
-      return translated;
+      const decoded = decodePercentEncodedText(translated);
+      translationCacheRef.current.set(key, decoded);
+      return decoded;
     } catch {
       return text;
     }
   };
-  const localizedTask = (entry: TaskEntry) => entry.taskI18n?.[language] ?? entry.task;
-  const localizedNotes = (entry: TaskEntry) => entry.notesI18n?.[language] ?? entry.notes;
-  const localizedTag = (entry: TaskEntry) => entry.tagI18n?.[language] ?? entry.tag ?? '';
+  const localizedTask = (entry: TaskEntry) => decodePercentEncodedText(entry.taskI18n?.[language] ?? entry.task);
+  const localizedNotes = (entry: TaskEntry) => decodePercentEncodedText(entry.notesI18n?.[language] ?? entry.notes);
+  const localizedTag = (entry: TaskEntry) => decodePercentEncodedText(entry.tagI18n?.[language] ?? entry.tag ?? '');
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
@@ -1350,12 +1429,12 @@ export default function App() {
             id: item.id,
             date: item.date,
             time: item.time ?? '09:00',
-            task: item.task ?? '',
-            notes: item.notes ?? '',
-            tag: item.tag ?? '',
-            taskI18n: item.taskI18n ?? undefined,
-            notesI18n: item.notesI18n ?? undefined,
-            tagI18n: item.tagI18n ?? undefined,
+            task: decodePercentEncodedText(item.task ?? ''),
+            notes: decodePercentEncodedText(item.notes ?? ''),
+            tag: decodePercentEncodedText(item.tag ?? ''),
+            taskI18n: decodeEntryI18n(item.taskI18n),
+            notesI18n: decodeEntryI18n(item.notesI18n),
+            tagI18n: decodeEntryI18n(item.tagI18n),
             priority:
               item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
                 ? item.priority
@@ -1421,15 +1500,9 @@ export default function App() {
         if (savedTaskTemplates) {
           const parsedTemplates = JSON.parse(savedTaskTemplates) as Partial<Record<Language, string[]>>;
           setTaskTemplates({
-            uk: Array.isArray(parsedTemplates.uk)
-              ? parsedTemplates.uk.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-              : DEFAULT_TASK_TEMPLATES.uk,
-            en: Array.isArray(parsedTemplates.en)
-              ? parsedTemplates.en.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-              : DEFAULT_TASK_TEMPLATES.en,
-            ro: Array.isArray(parsedTemplates.ro)
-              ? parsedTemplates.ro.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-              : DEFAULT_TASK_TEMPLATES.ro,
+            uk: decodePresetList(parsedTemplates.uk, DEFAULT_TASK_TEMPLATES.uk),
+            en: decodePresetList(parsedTemplates.en, DEFAULT_TASK_TEMPLATES.en),
+            ro: decodePresetList(parsedTemplates.ro, DEFAULT_TASK_TEMPLATES.ro),
           });
         }
         if (rawWorkDay) {
@@ -1642,21 +1715,6 @@ export default function App() {
 
   const selectedDateIndex = Math.max(0, dateOptions.indexOf(form.date));
   const selectedTimeIndex = Math.max(0, timeOptions.indexOf(form.time));
-  const isNativeIosPicker = USE_NATIVE_IOS_PICKER && Platform.OS === 'ios';
-  const formDateObject = useMemo(() => {
-    const candidate = new Date(`${form.date}T00:00:00`);
-    return Number.isNaN(candidate.getTime()) ? new Date() : candidate;
-  }, [form.date]);
-  const formTimeObject = useMemo(() => {
-    const [hRaw, mRaw] = form.time.split(':');
-    const h = Number.parseInt(hRaw ?? '8', 10);
-    const m = Number.parseInt(mRaw ?? '30', 10);
-    const safeH = Number.isNaN(h) ? 8 : Math.max(0, Math.min(23, h));
-    const safeM = Number.isNaN(m) ? 30 : Math.max(0, Math.min(59, m));
-    const base = new Date();
-    base.setHours(safeH, safeM, 0, 0);
-    return base;
-  }, [form.time]);
 
   const formatReadableDate = (value: string) => {
     const date = new Date(`${value}T00:00:00`);
@@ -1668,26 +1726,13 @@ export default function App() {
     });
   };
 
-  const handleNativeDateChange = (_event: unknown, value?: Date) => {
-    if (!value) {
-      return;
-    }
-    void selectDate(formatLocalDate(value), false);
-  };
-
-  const handleNativeTimeChange = (_event: unknown, value?: Date) => {
-    if (!value) {
-      return;
-    }
-    const minutes = value.getMinutes();
-    const roundedMinutes = Math.round(minutes / 15) * 15;
-    const rounded = new Date(value);
-    if (roundedMinutes >= 60) {
-      rounded.setHours((rounded.getHours() + 1) % 24, 0, 0, 0);
-    } else {
-      rounded.setMinutes(roundedMinutes, 0, 0);
-    }
-    void selectTime(formatLocalTime(rounded), false);
+  const formatWheelDateNoYear = (value: string) => {
+    const date = new Date(`${value}T00:00:00`);
+    return date.toLocaleDateString(language === 'uk' ? 'uk-UA' : language === 'ro' ? 'ro-RO' : 'en-US', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'long',
+    });
   };
 
   const updateField = (field: keyof NewTask, value: string) => {
@@ -1706,6 +1751,12 @@ export default function App() {
       } else {
         await Haptics.selectionAsync();
       }
+    }
+    const idx = dateOptions.indexOf(value);
+    if (idx >= 0) {
+      requestAnimationFrame(() => {
+        dateWheelRef.current?.scrollTo({ y: idx * WHEEL_ITEM_HEIGHT, animated: true });
+      });
     }
   };
 
@@ -1733,6 +1784,18 @@ export default function App() {
     lastTimeIndexRef.current = selectedTimeIndex;
     lastTimeHapticIndexRef.current = selectedTimeIndex;
   }, [selectedTimeIndex]);
+
+  useLayoutEffect(() => {
+    if (loading || screen !== 'calendar') {
+      return;
+    }
+    const di = dateOptions.indexOf(form.date);
+    const ti = timeOptions.indexOf(form.time);
+    const yd = (di >= 0 ? di : 0) * WHEEL_ITEM_HEIGHT;
+    const yt = (ti >= 0 ? ti : 0) * WHEEL_ITEM_HEIGHT;
+    dateWheelRef.current?.scrollTo({ y: yd, animated: false });
+    timeWheelRef.current?.scrollTo({ y: yt, animated: false });
+  }, [loading, screen, dateOptions, timeOptions]);
 
   const getWheelIndex = (offsetY: number, length: number) => {
     const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
@@ -1787,19 +1850,19 @@ export default function App() {
 
   const applyDateMagnet = () => {
     const index = getWheelIndex(lastDateOffsetRef.current, dateOptions.length);
-    const offset = index * WHEEL_ITEM_HEIGHT;
-    dateWheelRef.current?.scrollToOffset({ offset, animated: false });
+    const y = index * WHEEL_ITEM_HEIGHT;
+    dateWheelRef.current?.scrollTo({ y, animated: false });
     setTimeout(() => {
-      dateWheelRef.current?.scrollToOffset({ offset, animated: false });
+      dateWheelRef.current?.scrollTo({ y, animated: false });
     }, 30);
   };
 
   const applyTimeMagnet = () => {
     const index = getWheelIndex(lastTimeOffsetRef.current, timeOptions.length);
-    const offset = index * WHEEL_ITEM_HEIGHT;
-    timeWheelRef.current?.scrollToOffset({ offset, animated: false });
+    const y = index * WHEEL_ITEM_HEIGHT;
+    timeWheelRef.current?.scrollTo({ y, animated: false });
     setTimeout(() => {
-      timeWheelRef.current?.scrollToOffset({ offset, animated: false });
+      timeWheelRef.current?.scrollTo({ y, animated: false });
     }, 30);
   };
 
@@ -1837,7 +1900,10 @@ export default function App() {
 
   const addTask = () => {
     const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(form.time);
-    if (!form.date || !form.task.trim() || !validTime) {
+    const taskTrim = decodePercentEncodedText(form.task).trim();
+    const notesTrim = decodePercentEncodedText(form.notes).trim();
+    const tagTrim = decodePercentEncodedText(form.tag).trim();
+    if (!form.date || !taskTrim || !validTime) {
       Alert.alert(t.validationTitle, t.validationMessage);
       return;
     }
@@ -1848,12 +1914,12 @@ export default function App() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: form.date,
       time: form.time,
-      task: form.task.trim(),
-      notes: form.notes.trim(),
-      tag: form.tag.trim() || undefined,
-      taskI18n: { [language]: form.task.trim() },
-      notesI18n: { [language]: form.notes.trim() },
-      tagI18n: { [language]: form.tag.trim() || '' },
+      task: taskTrim,
+      notes: notesTrim,
+      tag: tagTrim || undefined,
+      taskI18n: { [language]: taskTrim },
+      notesI18n: { [language]: notesTrim },
+      tagI18n: { [language]: tagTrim },
       priority: form.priority,
       inbox: false,
       completed: false,
@@ -1870,20 +1936,23 @@ export default function App() {
   };
 
   const addToInbox = () => {
-    if (!form.task.trim()) {
+    const taskTrim = decodePercentEncodedText(form.task).trim();
+    if (!taskTrim) {
       Alert.alert(t.validationTitle, t.validationMessage);
       return;
     }
+    const notesTrim = decodePercentEncodedText(form.notes).trim();
+    const tagTrim = decodePercentEncodedText(form.tag).trim();
     const entry: TaskEntry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: today,
       time: '08:30',
-      task: form.task.trim(),
-      notes: form.notes.trim(),
-      tag: form.tag.trim() || undefined,
-      taskI18n: { [language]: form.task.trim() },
-      notesI18n: { [language]: form.notes.trim() },
-      tagI18n: { [language]: form.tag.trim() || '' },
+      task: taskTrim,
+      notes: notesTrim,
+      tag: tagTrim || undefined,
+      taskI18n: { [language]: taskTrim },
+      notesI18n: { [language]: notesTrim },
+      tagI18n: { [language]: tagTrim },
       priority: form.priority,
       inbox: true,
       completed: false,
@@ -2598,6 +2667,12 @@ export default function App() {
         setEntries(
           parsed.entries.map((item) => ({
             ...item,
+            task: decodePercentEncodedText(item.task ?? ''),
+            notes: decodePercentEncodedText(item.notes ?? ''),
+            tag: decodePercentEncodedText(item.tag ?? ''),
+            taskI18n: decodeEntryI18n(item.taskI18n),
+            notesI18n: decodeEntryI18n(item.notesI18n),
+            tagI18n: decodeEntryI18n(item.tagI18n),
             priority:
               item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
                 ? item.priority
@@ -2643,15 +2718,9 @@ export default function App() {
       }
       if (parsed.taskTemplates) {
         setTaskTemplates({
-          uk: Array.isArray(parsed.taskTemplates.uk)
-            ? parsed.taskTemplates.uk.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            : DEFAULT_TASK_TEMPLATES.uk,
-          en: Array.isArray(parsed.taskTemplates.en)
-            ? parsed.taskTemplates.en.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            : DEFAULT_TASK_TEMPLATES.en,
-          ro: Array.isArray(parsed.taskTemplates.ro)
-            ? parsed.taskTemplates.ro.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            : DEFAULT_TASK_TEMPLATES.ro,
+          uk: decodePresetList(parsed.taskTemplates.uk, DEFAULT_TASK_TEMPLATES.uk),
+          en: decodePresetList(parsed.taskTemplates.en, DEFAULT_TASK_TEMPLATES.en),
+          ro: decodePresetList(parsed.taskTemplates.ro, DEFAULT_TASK_TEMPLATES.ro),
         });
       }
       if (
@@ -2710,6 +2779,12 @@ export default function App() {
         setEntries(
           bundle.entries.map((item) => ({
             ...item,
+            task: decodePercentEncodedText(item.task ?? ''),
+            notes: decodePercentEncodedText(item.notes ?? ''),
+            tag: decodePercentEncodedText(item.tag ?? ''),
+            taskI18n: decodeEntryI18n(item.taskI18n),
+            notesI18n: decodeEntryI18n(item.notesI18n),
+            tagI18n: decodeEntryI18n(item.tagI18n),
             priority:
               item.priority === 'low' || item.priority === 'high' || item.priority === 'medium'
                 ? item.priority
@@ -2755,15 +2830,9 @@ export default function App() {
       }
       if (bundle.taskTemplates) {
         setTaskTemplates({
-          uk: Array.isArray(bundle.taskTemplates.uk)
-            ? bundle.taskTemplates.uk.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            : DEFAULT_TASK_TEMPLATES.uk,
-          en: Array.isArray(bundle.taskTemplates.en)
-            ? bundle.taskTemplates.en.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            : DEFAULT_TASK_TEMPLATES.en,
-          ro: Array.isArray(bundle.taskTemplates.ro)
-            ? bundle.taskTemplates.ro.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-            : DEFAULT_TASK_TEMPLATES.ro,
+          uk: decodePresetList(bundle.taskTemplates.uk, DEFAULT_TASK_TEMPLATES.uk),
+          en: decodePresetList(bundle.taskTemplates.en, DEFAULT_TASK_TEMPLATES.en),
+          ro: decodePresetList(bundle.taskTemplates.ro, DEFAULT_TASK_TEMPLATES.ro),
         });
       }
       if (
@@ -3272,47 +3341,11 @@ export default function App() {
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.addTask}</Text>
         <Text style={styles.menuSubtitle}>{t.selectDay}: {formatReadableDate(form.date)}</Text>
-        {isNativeIosPicker ? (
-          <View style={styles.nativePickerColumn}>
-            <View style={styles.nativePickerSlot}>
-              <DateTimePicker
-                value={formDateObject}
-                mode="date"
-                display="spinner"
-                locale={language === 'uk' ? 'uk_UA' : language === 'ro' ? 'ro_RO' : 'en_US'}
-                onChange={handleNativeDateChange}
-                accentColor="#2563eb"
-                textColor={isDark || isColorful ? '#e5ecff' : '#1b1b1f'}
-                themeVariant={isDark || isColorful ? 'dark' : 'light'}
-                style={styles.nativePickerIOS}
-              />
-            </View>
-            <View style={styles.nativePickerSlot}>
-              <DateTimePicker
-                value={formTimeObject}
-                mode="time"
-                is24Hour
-                display="spinner"
-                minuteInterval={15}
-                locale={language === 'uk' ? 'uk_UA' : language === 'ro' ? 'ro_RO' : 'en_US'}
-                onChange={handleNativeTimeChange}
-                accentColor="#2563eb"
-                textColor={isDark || isColorful ? '#e5ecff' : '#1b1b1f'}
-                themeVariant={isDark || isColorful ? 'dark' : 'light'}
-                style={styles.nativePickerIOS}
-              />
-            </View>
-          </View>
-        ) : (
-          // Backup picker kept intentionally for quick rollback.
-          <View style={styles.pickerRow}>
+        <View style={styles.pickerRow}>
             <View style={[styles.dateWheelContainer, styles.halfWheel]}>
-              <FlatList
+              <ScrollView
                 ref={dateWheelRef}
-                data={dateOptions}
-                keyExtractor={(item) => item}
-                initialScrollIndex={selectedDateIndex}
-                getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
+                nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
                 snapToInterval={WHEEL_ITEM_HEIGHT}
                 snapToAlignment="start"
@@ -3332,16 +3365,12 @@ export default function App() {
                   scheduleDateMagnet();
                 }}
                 onMomentumScrollEnd={(event) => applyDateMagnetFromOffset(event.nativeEvent.contentOffset.y)}
-                onScrollToIndexFailed={(info) => {
-                  dateWheelRef.current?.scrollToOffset({
-                    offset: info.index * WHEEL_ITEM_HEIGHT,
-                    animated: false,
-                  });
-                }}
-                renderItem={({ item }) => {
+              >
+                {dateOptions.map((item) => {
                   const selected = item === form.date;
                   return (
                     <Pressable
+                      key={item}
                       style={[styles.dateWheelItem, selected && styles.dateWheelItemSelected]}
                       onPress={() => {
                         triggerTapSound();
@@ -3349,26 +3378,23 @@ export default function App() {
                         void selectDate(item, false);
                         const idx = dateOptions.indexOf(item);
                         if (idx >= 0) {
-                          dateWheelRef.current?.scrollToIndex({ index: idx, animated: true });
+                          dateWheelRef.current?.scrollTo({ y: idx * WHEEL_ITEM_HEIGHT, animated: true });
                         }
                       }}
                     >
                       <Text style={[styles.dateWheelText, selected && styles.dateWheelTextSelected]}>
-                        {formatReadableDate(item)}
+                        {formatWheelDateNoYear(item)}
                       </Text>
                     </Pressable>
                   );
-                }}
-              />
+                })}
+              </ScrollView>
               <View pointerEvents="none" style={styles.wheelCenterBand} />
             </View>
             <View style={[styles.timeWheelContainer, styles.halfWheel]}>
-              <FlatList
+              <ScrollView
                 ref={timeWheelRef}
-                data={timeOptions}
-                keyExtractor={(item) => item}
-                initialScrollIndex={selectedTimeIndex}
-                getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
+                nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
                 snapToInterval={WHEEL_ITEM_HEIGHT}
                 snapToAlignment="start"
@@ -3388,16 +3414,12 @@ export default function App() {
                   scheduleTimeMagnet();
                 }}
                 onMomentumScrollEnd={(event) => applyTimeMagnetFromOffset(event.nativeEvent.contentOffset.y)}
-                onScrollToIndexFailed={(info) => {
-                  timeWheelRef.current?.scrollToOffset({
-                    offset: info.index * WHEEL_ITEM_HEIGHT,
-                    animated: false,
-                  });
-                }}
-                renderItem={({ item }) => {
+              >
+                {timeOptions.map((item) => {
                   const selected = item === form.time;
                   return (
                     <Pressable
+                      key={item}
                       style={[styles.timeWheelItem, selected && styles.timeWheelItemSelected]}
                       onPress={() => {
                         triggerTapSound();
@@ -3405,19 +3427,18 @@ export default function App() {
                         void selectTime(item, false);
                         const idx = timeOptions.indexOf(item);
                         if (idx >= 0) {
-                          timeWheelRef.current?.scrollToIndex({ index: idx, animated: true });
+                          timeWheelRef.current?.scrollTo({ y: idx * WHEEL_ITEM_HEIGHT, animated: true });
                         }
                       }}
                     >
                       <Text style={[styles.timeWheelText, selected && styles.timeWheelTextSelected]}>{item}</Text>
                     </Pressable>
                   );
-                }}
-              />
+                })}
+              </ScrollView>
               <View pointerEvents="none" style={styles.wheelCenterBand} />
             </View>
           </View>
-        )}
         <Text style={[styles.menuSubtitle, { marginBottom: 6 }]}>{t.priority}</Text>
         <View style={styles.languageButtons}>
           {(['low', 'medium', 'high'] as Priority[]).map((priority) => (
@@ -3459,20 +3480,20 @@ export default function App() {
         </View>
         <TextInput
           style={styles.input}
-          value={form.task}
+          value={decodePercentEncodedText(form.task)}
           onChangeText={(text) => updateField('task', text)}
           placeholder={t.taskPlaceholder}
         />
         <TextInput
           style={[styles.input, styles.notesInput]}
-          value={form.notes}
+          value={decodePercentEncodedText(form.notes)}
           onChangeText={(text) => updateField('notes', text)}
           placeholder={t.notesPlaceholder}
           multiline
         />
         <TextInput
           style={styles.input}
-          value={form.tag}
+          value={decodePercentEncodedText(form.tag)}
           onChangeText={(text) => updateField('tag', text)}
           placeholder={t.tagPlaceholder}
         />
@@ -3768,18 +3789,59 @@ export default function App() {
         </View>
       </View>
 
-      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.menuReport}</Text>
-        <View style={styles.actionsRow}>
-          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportCsv)}>
-            <Text style={styles.secondaryButtonText}>{t.exportCsv}</Text>
-          </Pressable>
-          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportDaySummary)}>
-            <Text style={styles.secondaryButtonText}>{t.exportDaySummary}</Text>
-          </Pressable>
-          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportPdfReport)}>
-            <Text style={styles.secondaryButtonText}>{t.exportPdf}</Text>
-          </Pressable>
+      <View style={[styles.card, styles.exportCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.exportSectionTitle}</Text>
+        <Text style={[styles.exportSectionHint, { color: c.textSecondary }]}>{t.exportSectionHint}</Text>
+        <View style={styles.exportTileList}>
+          {(
+            [
+              {
+                glyph: 'CSV',
+                accent: '#059669',
+                iconBg: 'rgba(5, 150, 105, 0.16)',
+                title: t.exportCsv,
+                desc: t.exportTileCsvDesc,
+                onPress: exportCsv,
+              },
+              {
+                glyph: 'TXT',
+                accent: '#7c3aed',
+                iconBg: 'rgba(124, 58, 237, 0.16)',
+                title: t.exportDaySummary,
+                desc: t.exportTileSummaryDesc,
+                onPress: exportDaySummary,
+              },
+              {
+                glyph: 'PDF',
+                accent: '#dc2626',
+                iconBg: 'rgba(220, 38, 38, 0.14)',
+                title: t.exportPdf,
+                desc: t.exportTilePdfDesc,
+                onPress: exportPdfReport,
+              },
+            ] as const
+          ).map((tile) => {
+            const tileSurface =
+              isColorful ? 'rgba(129, 140, 248, 0.07)' : isDark ? 'rgba(255, 255, 255, 0.04)' : '#f3f6fc';
+            return (
+              <Pressable
+                key={tile.glyph}
+                accessibilityRole="button"
+                accessibilityLabel={tile.title}
+                onPress={withInteractionFeedback(tile.onPress)}
+                style={[styles.exportTile, { backgroundColor: tileSurface, borderColor: c.cardBorder }]}
+              >
+                <View style={[styles.exportTileIcon, { backgroundColor: tile.iconBg }]}>
+                  <Text style={[styles.exportTileGlyph, { color: tile.accent }]}>{tile.glyph}</Text>
+                </View>
+                <View style={styles.exportTileBody}>
+                  <Text style={[styles.exportTileTitle, { color: c.textPrimary }]}>{tile.title}</Text>
+                  <Text style={[styles.exportTileDesc, { color: c.textSecondary }]}>{tile.desc}</Text>
+                </View>
+                <Text style={[styles.exportTileChevron, { color: c.tabIcon }]}>›</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -4057,20 +4119,61 @@ export default function App() {
           </View>
         )}
       </View>
-      <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+      <View style={[styles.card, styles.exportCard, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.backupTitle}</Text>
-        <Text style={[styles.entryNotes, { marginBottom: 10, color: c.textSecondary }]}>{t.autoBackupHint}</Text>
-        <View style={styles.actionsRow}>
-          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(exportJsonBackup)}>
-            <Text style={styles.secondaryButtonText}>{t.exportJson}</Text>
-          </Pressable>
-          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(importJsonBackup)}>
-            <Text style={styles.secondaryButtonText}>{t.importJson}</Text>
-          </Pressable>
-          <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={withInteractionFeedback(() => void revertLastImport())}>
-            <Text style={styles.secondaryButtonText}>{t.revertImport}</Text>
-          </Pressable>
+        <Text style={[styles.exportSectionHint, { color: c.textSecondary }]}>{t.backupActionsHint}</Text>
+        <View style={styles.exportTileList}>
+          {(
+            [
+              {
+                glyph: 'OUT',
+                accent: '#2563eb',
+                iconBg: 'rgba(37, 99, 235, 0.16)',
+                title: t.exportJson,
+                desc: t.backupTileExportDesc,
+                onPress: exportJsonBackup,
+              },
+              {
+                glyph: 'IMP',
+                accent: '#0d9488',
+                iconBg: 'rgba(13, 148, 136, 0.16)',
+                title: t.importJson,
+                desc: t.backupTileImportDesc,
+                onPress: importJsonBackup,
+              },
+              {
+                glyph: 'REV',
+                accent: '#ea580c',
+                iconBg: 'rgba(234, 88, 12, 0.14)',
+                title: t.revertImport,
+                desc: t.backupTileRevertDesc,
+                onPress: () => void revertLastImport(),
+              },
+            ] as const
+          ).map((tile) => {
+            const tileSurface =
+              isColorful ? 'rgba(129, 140, 248, 0.07)' : isDark ? 'rgba(255, 255, 255, 0.04)' : '#f3f6fc';
+            return (
+              <Pressable
+                key={tile.glyph}
+                accessibilityRole="button"
+                accessibilityLabel={tile.title}
+                onPress={withInteractionFeedback(tile.onPress)}
+                style={[styles.exportTile, { backgroundColor: tileSurface, borderColor: c.cardBorder }]}
+              >
+                <View style={[styles.exportTileIcon, { backgroundColor: tile.iconBg }]}>
+                  <Text style={[styles.exportTileGlyph, { color: tile.accent }]}>{tile.glyph}</Text>
+                </View>
+                <View style={styles.exportTileBody}>
+                  <Text style={[styles.exportTileTitle, { color: c.textPrimary }]}>{tile.title}</Text>
+                  <Text style={[styles.exportTileDesc, { color: c.textSecondary }]}>{tile.desc}</Text>
+                </View>
+                <Text style={[styles.exportTileChevron, { color: c.tabIcon }]}>›</Text>
+              </Pressable>
+            );
+          })}
         </View>
+        <Text style={[styles.backupFootnote, { color: c.textSecondary }]}>{t.autoBackupHint}</Text>
       </View>
       <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
         <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t.proTitle}</Text>
@@ -4411,8 +4514,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   dateWheelContainer: {
-    marginTop: 6,
-    marginBottom: 8,
+    marginTop: 2,
+    marginBottom: 2,
     borderWidth: 1,
     borderColor: '#dbe3f5',
     borderRadius: 10,
@@ -4423,27 +4526,7 @@ const styles = StyleSheet.create({
   pickerRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 8,
-  },
-  nativePickerColumn: {
-    flexDirection: 'column',
-    gap: 10,
-    marginBottom: 8,
-  },
-  nativePickerSlot: {
-    width: '100%',
-    minHeight: NATIVE_IOS_PICKER_HEIGHT,
-    borderWidth: 1,
-    borderColor: '#dbe3f5',
-    borderRadius: 10,
-    backgroundColor: '#f9fbff',
-    overflow: 'visible',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nativePickerIOS: {
-    width: '100%',
-    height: NATIVE_IOS_PICKER_HEIGHT,
+    marginBottom: 6,
   },
   halfWheel: {
     flex: 1,
@@ -4474,17 +4557,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#ecf3ff',
   },
   dateWheelText: {
-    color: '#36415f',
-    fontSize: 13,
+    color: '#0f172a',
+    fontSize: 12,
     fontWeight: '600',
   },
   dateWheelTextSelected: {
-    color: '#1e40af',
+    color: '#1e3a8a',
     fontWeight: '700',
   },
   timeWheelContainer: {
-    marginTop: 6,
-    marginBottom: 8,
+    marginTop: 2,
+    marginBottom: 2,
     borderWidth: 1,
     borderColor: '#dbe3f5',
     borderRadius: 10,
@@ -4504,12 +4587,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#ecf3ff',
   },
   timeWheelText: {
-    color: '#36415f',
-    fontSize: 13,
+    color: '#0f172a',
+    fontSize: 12,
     fontWeight: '600',
   },
   timeWheelTextSelected: {
-    color: '#1e40af',
+    color: '#1e3a8a',
     fontWeight: '700',
   },
   generalList: {
@@ -4526,6 +4609,63 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+  },
+  exportCard: {
+    paddingBottom: 4,
+  },
+  exportSectionHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  exportTileList: {
+    gap: 10,
+  },
+  exportTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  exportTileIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  exportTileGlyph: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  exportTileBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  exportTileTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  exportTileDesc: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  exportTileChevron: {
+    fontSize: 24,
+    fontWeight: '300',
+    marginLeft: 6,
+    marginTop: -2,
+  },
+  backupFootnote: {
+    marginTop: 14,
+    fontSize: 12,
+    lineHeight: 17,
   },
   templatesRow: {
     flexDirection: 'row',
